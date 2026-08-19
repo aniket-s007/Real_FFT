@@ -2,6 +2,9 @@ import math
 import cmath
 import numpy as np
 
+total_adderCore=[0]
+total_subtractor=[0]
+total_multiplier=[0]
 # =====================================================================
 # [MATH MODULE] - Combinational Multiplier
 # =====================================================================
@@ -12,6 +15,9 @@ def rotator(real_in, imag_in, phi, N):
     sin_val = math.sin(angle)
     r_out = real_in * cos_val - imag_in * sin_val
     i_out = imag_in * cos_val + real_in * sin_val
+    total_multiplier[0] += 4 # Increment global multiplier counter
+    total_adderCore[0] += 1  # Increment global adder counter
+    total_subtractor[0] += 1  # Increment global subtractor counter
     return r_out, i_out
 
 # =====================================================================
@@ -33,6 +39,8 @@ def tick_stage(schedule_k, ram_in_read, ram_out_write, N):
         B = ram_in_read[addr_B]
         ram_out_write[addr_A] = A + B
         ram_out_write[addr_B] = A - B
+        total_adderCore[0] += 1  # Increment global adder counter
+        total_subtractor[0] += 1  # Increment global subtractor counter
 
     elif op == 'EQ7':
         A = ram_in_read[addr_A]
@@ -49,7 +57,8 @@ def tick_stage(schedule_k, ram_in_read, ram_out_write, N):
         
         Top_r, Top_i = A_r + B_r, A_i + B_i
         Bot_r, Bot_i = A_r - B_r, A_i - B_i
-        
+        total_adderCore[0] += 2  # Increment global adder counter
+        total_subtractor[0] += 2  # Increment global subtractor counter
         R_rot, I_rot = rotator(Bot_r, Bot_i, phi, N)
         
         ram_out_write[addr_A] = Top_r
@@ -156,6 +165,7 @@ def unscramble_output(raw_ram, final_blocks, N):
         if b_type == 'DONE_REAL':
             bins_to_map.append((base, complex(raw_ram[r_start], 0)))
             bins_to_map.append((base + binstep, complex(raw_ram[r_start + 1], 0)))
+
         elif b_type == 'DONE_CFFT':
             bins_to_map.append((base, complex(raw_ram[r_start], raw_ram[i_start])))
             
@@ -172,9 +182,12 @@ def unscramble_output(raw_ram, final_blocks, N):
 # Rigorous Sweep and Verification Testbench
 # =====================================================================
 if __name__ == "__main__":
-    
+    total_adderCore=[0]
+    total_subtractor=[0]
+    total_multiplier=[0]
+
     # Target scale table points
-    target_sizes = [16, 32, 64, 128, 256, 512, 1024, 4096, 4096*2, 4096*16]
+    target_sizes = [2,4,8,16, 32, 64, 128, 256, 512, 1024, 4096, 4096*2, 4096*16]
     
     print("\n==========================================================================")
     print("      FUNCTIONAL RFFT GLOBAL VERIFICATION RUN (NO CLASSES)                ")
@@ -198,7 +211,7 @@ if __name__ == "__main__":
 
         # 4. Compute reference forward transform
         X_numpy = np.fft.rfft(x_original)
-
+      
         # 5. Assert precision thresholds
         try:
             np.testing.assert_allclose(X_custom, X_numpy, atol=1e-9)
@@ -208,7 +221,10 @@ if __name__ == "__main__":
             print(f"N = {N:<10} | FAIL                   | ERROR DETECTED")
             print(e)
             break
-            
+        print(f"Global Operation Counts: Adders (Core) = {total_adderCore[0]}, Subtractors = {total_subtractor[0]}, Multipliers = {total_multiplier[0]}") 
+        print("-" * 70)
+
+           
     print("-" * 62)
     
     # ==========================================================
