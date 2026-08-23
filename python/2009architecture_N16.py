@@ -115,82 +115,130 @@ def stage2(s1):
 
 def stage3(s2, verbose=True):
     """1x R2 (top lane, no rotator) + 1x R2 + 1x SWITCH + 1x ROTATOR
-    (bottom lane), 4 cycles each. Top lane only has 2 real ops (rows
-    0-3) -> idle for cycles 2-3. Bottom lane fills all 4 cycles: switch
-    ON for Eq.(7) rows 4-7 (cycles 0-1, rotator reads the upper/top-lane
-    butterfly's diff output from stage 2) then switch OFF for the
-    complex-FFT rows 8-15 (cycles 2-3, rotator reads this stage's own
-    local R2 diff output)."""
+    (bottom lane), 4 cycles each -- written out fully by hand, one cycle
+    per block, every index literal, no loops. Top lane only has 2 real
+    ops (rows 0-3) -> idle for cycles 2-3. Bottom lane fills all 4
+    cycles: switch ON for Eq.(7) rows 4-7 (cycles 0-1, rotator reads the
+    upper/top-lane butterfly's diff output from stage 2) then switch OFF
+    for the complex-FFT rows 8-15 (cycles 2-3, rotator reads this
+    stage's own local R2 diff output)."""
     s3 = [0.0] * 16
 
-    # ---- top lane: real butterfly, rows 0-3 (only 2 of 4 cycles used) ----
-    for cyc in range(2):
-        s3[cyc], s3[cyc + 2] = r2(s2[cyc], s2[cyc + 2])
-        if verbose:
-            print(f"  stage3 top    cyc{cyc}: R2(s2[{cyc}], s2[{cyc+2}])  -> real bins")
-    # cycles 2-3: top lane idle -- nothing left for it to do this stage.
+    # ==== TOP LANE ============================================================
 
-    # ---- bottom lane, cycles 0-1: Eq.(7) rows 4-7, SWITCH ACTIVATED --------
+    # ---- top lane, cycle 0: real butterfly, row pair (0, 2) ----------------
+    s3[0], s3[2] = r2(s2[0], s2[2])
+    if verbose:
+        print("  stage3 top    cyc0: R2(s2[0], s2[2])  -> real bins")
+
+    # ---- top lane, cycle 1: real butterfly, row pair (1, 3) ----------------
+    s3[1], s3[3] = r2(s2[1], s2[3])
+    if verbose:
+        print("  stage3 top    cyc1: R2(s2[1], s2[3])  -> real bins")
+
+    # top lane, cycles 2-3: idle -- nothing left for it to do this stage.
+
+    # ==== BOTTOM LANE ==========================================================
+
+    # ---- bottom lane, cycle 0: Eq.(7) row pair (4, 6), SWITCH ACTIVATED ----
     # Rotator input is the UPPER butterfly's own diff output, already sitting
-    # in s2[4:8] from stage 2's top-lane R2 (sign flip = Fig.3's "-1" edge).
-    # Stage 3's local bottom R2 has no part in this path at all.
-    for k in range(2):
-        upper_diff = (s2[4 + k], -s2[6 + k])
-        re_in, im_in = switch(True, local_diff=None, upper_diff=upper_diff)
-        phi = 2 * k                          # boxes 0, 2
-        s3[4 + k], s3[6 + k] = rotator(re_in, im_in, phi)
-        if verbose:
-            print(f"  stage3 bottom cyc{k}: SWITCH activated -- rotator reads the upper "
-                  f"(stage-2 top-lane) butterfly's diff output, phi={phi}")
+    # in s2[4] / s2[6] from stage 2's top-lane R2 (sign flip = Fig.3's "-1"
+    # edge). Stage 3's local bottom R2 plays no part in this path at all.
+    upper_diff_re_4 = s2[4]
+    upper_diff_im_4 = -s2[6]
+    re_in_4, im_in_4 = switch(True, local_diff=None,
+                               upper_diff=(upper_diff_re_4, upper_diff_im_4))
+    s3[4], s3[6] = rotator(re_in_4, im_in_4, 0)          # box 0
+    if verbose:
+        print("  stage3 bottom cyc0: SWITCH activated -- rotator reads the upper "
+              "(stage-2 top-lane) butterfly's diff output, phi=0")
 
-    # ---- bottom lane, cycles 2-3: complex-FFT rows 8-15, SWITCH OFF --------
-    # Rotator input is this stage's OWN local bottom-lane R2 diff output --
-    # a completely ordinary complex-FFT butterfly, nothing rerouted.
-    for k in range(2):
-        Ar, Br = s2[8 + k], s2[10 + k]
-        Ai, Bi = s2[12 + k], s2[14 + k]
-        sum_re, diff_re = r2(Ar, Br)
-        sum_im, diff_im = r2(Ai, Bi)
-        s3[8 + k], s3[12 + k] = sum_re, sum_im            # R2's sum -> straight out, no rotation
-        re_in, im_in = switch(False, local_diff=(diff_re, diff_im), upper_diff=None)
-        phi = 4 * k                                        # boxes 0, 4
-        s3[10 + k], s3[14 + k] = rotator(re_in, im_in, phi)
-        if verbose:
-            print(f"  stage3 bottom cyc{k+2}: SWITCH straight-through -- rotator reads "
-                  f"stage 3's own local R2 diff output, phi={phi}")
+    # ---- bottom lane, cycle 1: Eq.(7) row pair (5, 7), SWITCH ACTIVATED ----
+    upper_diff_re_5 = s2[5]
+    upper_diff_im_5 = -s2[7]
+    re_in_5, im_in_5 = switch(True, local_diff=None,
+                               upper_diff=(upper_diff_re_5, upper_diff_im_5))
+    s3[5], s3[7] = rotator(re_in_5, im_in_5, 2)          # box 2
+    if verbose:
+        print("  stage3 bottom cyc1: SWITCH activated -- rotator reads the upper "
+              "(stage-2 top-lane) butterfly's diff output, phi=2")
+
+    # ---- bottom lane, cycle 2: complex-FFT rows (8,10 / 12,14), SWITCH OFF -
+    # Real part of the complex pair: (Ar, Br) = (s2[8], s2[10]).
+    # Imag part of the complex pair: (Ai, Bi) = (s2[12], s2[14]).
+    # Rotator input is this stage's OWN local R2 diff output -- an ordinary
+    # complex-FFT butterfly, nothing rerouted.
+    sum_re_8, diff_re_8 = r2(s2[8], s2[10])
+    sum_im_8, diff_im_8 = r2(s2[12], s2[14])
+    s3[8], s3[12] = sum_re_8, sum_im_8                    # R2's sum -> straight out, no rotation
+    re_in_8, im_in_8 = switch(False, local_diff=(diff_re_8, diff_im_8), upper_diff=None)
+    s3[10], s3[14] = rotator(re_in_8, im_in_8, 0)          # box 0
+    if verbose:
+        print("  stage3 bottom cyc2: SWITCH straight-through -- rotator reads "
+              "stage 3's own local R2 diff output, phi=0")
+
+    # ---- bottom lane, cycle 3: complex-FFT rows (9,11 / 13,15), SWITCH OFF -
+    sum_re_9, diff_re_9 = r2(s2[9], s2[11])
+    sum_im_9, diff_im_9 = r2(s2[13], s2[15])
+    s3[9], s3[13] = sum_re_9, sum_im_9
+    re_in_9, im_in_9 = switch(False, local_diff=(diff_re_9, diff_im_9), upper_diff=None)
+    s3[11], s3[15] = rotator(re_in_9, im_in_9, 4)          # box 4
+    if verbose:
+        print("  stage3 bottom cyc3: SWITCH straight-through -- rotator reads "
+              "stage 3's own local R2 diff output, phi=4")
 
     return s3
 
 
 def stage4(s3, verbose=False):
-    """2x R2, 0x ROTATOR. Every twiddle remaining by this stage is phi=0
-    (the identity -- see the module docstring), so there is nothing left
-    for a rotator to do and none is built."""
+    """2x R2, 0x ROTATOR -- written out fully by hand, one cycle per
+    block, every index literal, no loops. Every twiddle remaining by
+    this stage is phi=0 (the identity -- see the module docstring), so
+    there is nothing left for a rotator to do and none is built."""
     s4 = [0.0] * 16
 
-    # ---- top lane, cycle 0: real butterfly, rows 0-1 -> bins X_0, X_8 ------
+    # ==== TOP LANE ============================================================
+
+    # ---- top lane, cycle 0: real butterfly, row pair (0, 1) -> X_0, X_8 ----
     s4[0], s4[1] = r2(s3[0], s3[1])
-    # ---- top lane, cycle 1: Eq.(7) rows 2-3, phi=0 -> pure sign flip -------
-    s4[2], s4[3] = s3[2], -s3[3]          # rotator(A, B, phi=0) == (A, B): nothing to compute
     if verbose:
         print("  stage4 top    cyc0: R2(s3[0], s3[1])            -> X_0, X_8")
+
+    # ---- top lane, cycle 1: Eq.(7) row pair (2, 3), phi=0 -> pure sign flip
+    # rotator(A, B, phi=0) == (A, B): nothing to compute, so it's not even
+    # written as a rotator call here -- just the sign flip on the wire.
+    s4[2] = s3[2]
+    s4[3] = -s3[3]
+    if verbose:
         print("  stage4 top    cyc1: no rotation (phi=0) -- pure sign flip -> X_4")
 
-    # ---- bottom lane: three complex-FFT rows, phi=0 every time -------------
-    Ar, Br, Ai, Bi = s3[4], s3[5], s3[6], s3[7]
-    s4[4], s4[5] = r2(Ar, Br)             # -> X_2 (sum), X_6 (diff, no rotation needed)
-    s4[6], s4[7] = r2(Ai, Bi)
+    # top lane, cycles 2-3: idle -- nothing left for it to do this stage.
 
-    Ar, Br, Ai, Bi = s3[8], s3[9], s3[12], s3[13]
-    s4[8], s4[9] = r2(Ar, Br)              # -> X_1, X_7
-    s4[12], s4[13] = r2(Ai, Bi)
+    # ==== BOTTOM LANE ==========================================================
 
-    Ar, Br, Ai, Bi = s3[10], s3[11], s3[14], s3[15]
-    s4[10], s4[11] = r2(Ar, Br)            # -> X_5, X_3
-    s4[14], s4[15] = r2(Ai, Bi)
-    # cycle 3: bottom lane idle -- only 3 complex-FFT ops needed.
+    # ---- bottom lane, cycle 0: complex-FFT rows (4,5 / 6,7) -> X_2, X_6 ----
+    # Real part of the complex pair: (Ar, Br) = (s3[4], s3[5]).
+    # Imag part of the complex pair: (Ai, Bi) = (s3[6], s3[7]).
+    # phi=0, so R2's sum and difference outputs go straight to the output --
+    # no rotator needed at all.
+    s4[4], s4[5] = r2(s3[4], s3[5])       # real part: sum -> X_2, diff -> X_6
+    s4[6], s4[7] = r2(s3[6], s3[7])       # imag part: sum -> X_2, diff -> X_6
     if verbose:
-        print("  stage4 bottom cyc0-2: 3x complex-FFT, R2 only (no rotator built)")
+        print("  stage4 bottom cyc0: R2(s3[4],s3[5]) & R2(s3[6],s3[7])  -> X_2, X_6")
+
+    # ---- bottom lane, cycle 1: complex-FFT rows (8,9 / 12,13) -> X_1, X_7 --
+    s4[8], s4[9] = r2(s3[8], s3[9])
+    s4[12], s4[13] = r2(s3[12], s3[13])
+    if verbose:
+        print("  stage4 bottom cyc1: R2(s3[8],s3[9]) & R2(s3[12],s3[13])  -> X_1, X_7")
+
+    # ---- bottom lane, cycle 2: complex-FFT rows (10,11 / 14,15) -> X_5, X_3
+    s4[10], s4[11] = r2(s3[10], s3[11])
+    s4[14], s4[15] = r2(s3[14], s3[15])
+    if verbose:
+        print("  stage4 bottom cyc2: R2(s3[10],s3[11]) & R2(s3[14],s3[15])  -> X_5, X_3")
+
+    # bottom lane, cycle 3: idle -- only 3 complex-FFT ops needed.
 
     return s4
 
