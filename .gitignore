@@ -1,2 +1,14 @@
 IR021_1.mat
 Normal_1.mat
+__pycache__/
+*.pyc
+
+# Vivado xsim build artifacts
+verilog/**/xsim.dir/
+verilog/**/*.jou
+verilog/**/*.log
+verilog/**/*.pb
+verilog/**/*.wdb
+verilog/**/.Xil/
+verilog/**/dfx_runtime.txt
+*.vvp

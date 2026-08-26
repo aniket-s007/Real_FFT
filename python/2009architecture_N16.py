@@ -187,6 +187,19 @@ def stage3(s2, verbose=True):
         print("  stage3 bottom cyc3: SWITCH straight-through -- rotator reads "
               "stage 3's own local R2 diff output, phi=4")
 
+    # s3[0], s3[2] = r2(s2[0], s2[2])  # top lane R2
+    # s3[4], s3[6] = r2(s2[4], s2[6])  # top lane R2
+
+    # re_in_4, im_in_4 = switch(True, local_diff=None,upper_diff=(s3[2], s3[4])) # but we cant apply butterfly on one imaginar and one real 
+
+
+
+    # s3[1], s3[3] = r2(s2[1], s2[3])  # top lane R2
+
+
+
+
+
     return s3
 
 
