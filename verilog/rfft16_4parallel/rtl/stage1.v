@@ -26,7 +26,7 @@
 // against the floating-point golden model.
 
 module stage1 #(
-    parameter WIDTH = 16
+    parameter WIDTH = 8
 ) (
     input  wire                     clk,
     input  wire                     rst_n,     // active-low synchronous reset
