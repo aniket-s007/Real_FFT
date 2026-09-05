@@ -53,6 +53,12 @@ module tb_stage2;
         .s2_bot_re(s2_bot_re), .s2_bot_im(s2_bot_im)
     );
 
+    // debug probe: stage2's internal twiddle-select counter (rtl/stage2.v's
+    // `k`), pulled up to this testbench's own scope via a hierarchical
+    // reference so it shows up directly under tb_stage2 in the xsim
+    // waveform viewer instead of having to drill into u_stage2's scope.
+    wire [1:0] dbg_s2_k = u_stage2.k;
+
     initial clk = 0;
     always #5 clk = ~clk;
 

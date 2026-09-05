@@ -126,7 +126,7 @@ module stage2 #(
         begin
             derive_coef= raw[MASTER_WIDTH-1 -: WIDTH];
         end
-    endfunction    
+    endfunction
 
     localparam signed [WIDTH-1:0] COS0 = derive_coef(COS0_M);
     localparam signed [WIDTH-1:0] SIN0 = derive_coef(SIN0_M);
@@ -159,6 +159,7 @@ module stage2 #(
     // ---- top lane: plain real BF ----
     wire signed [IN_WIDTH:0] top_sum_c, top_diff_c;
     real_bf #(.WIDTH(IN_WIDTH)) bf_top (
+        .pass_thru(1'b0),                       // always arithmetic in this column
         .in1(s1_k), .in2(s1_k4),
         .out_sum(top_sum_c), .out_diff(top_diff_c)
     );

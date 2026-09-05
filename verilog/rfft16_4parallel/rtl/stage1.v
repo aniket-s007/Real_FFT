@@ -49,12 +49,14 @@ module stage1 #(
 
     // top lane: BF(x(k), x(k+N/2))
     real_bf #(.WIDTH(WIDTH)) bf_top (
+        .pass_thru(1'b0),                       // always arithmetic in this column
         .in1(x_k), .in2(x_k_n2),
         .out_sum(top_sum_c), .out_diff(top_diff_c)
     );
 
     // bottom lane: BF(x(k+N/4), x(k+3N/4))
     real_bf #(.WIDTH(WIDTH)) bf_bot (
+        .pass_thru(1'b0),                       // always arithmetic in this column
         .in1(x_k_n4), .in2(x_k_3n4),
         .out_sum(bot_sum_c), .out_diff(bot_diff_c)
     );

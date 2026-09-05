@@ -1,7 +1,11 @@
 # Usage:
-#   make              -> build & run tb_stage1 (default)
-#   make STAGE=2      -> build & run tb_stage2
-#   make STAGE=2 wave -> open tb_stage2 in the xsim GUI
+#   make                  -> build & run tb_stage1 (default)
+#   make STAGE=2          -> build & run tb_stage2
+#   make STAGE=top12      -> build & run tb_top_stage1_stage2 (stage1->stage2
+#                             structural link, top_stage1_stage2.v)
+#   make STAGE=timed      -> build & run tb_stage1_stage2_timed (simple
+#                             explicit-timeline stage1->stage2 testbench)
+#   make STAGE=2 wave     -> open tb_stage2 in the xsim GUI
 #   make clean
 #
 # WIDTH sweeping for the later SQNR study: xelab's documented
@@ -19,10 +23,18 @@ BUILD_DIR := log
 VIVADO_BIN  := F:\Vivado\2025.1\Vivado\bin
 export PATH := $(VIVADO_BIN);$(PATH)
 
-SOURCES_1 := ../rtl/real_bf.v ../rtl/stage1.v ../tb/tb_stage1.v
-SOURCES_2 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../tb/tb_stage2.v
+SOURCES_1    := ../rtl/real_bf.v ../rtl/stage1.v ../tb/tb_stage1.v
+SOURCES_2    := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../tb/tb_stage2.v
+SOURCES_top12 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/top_stage1_stage2.v ../tb/tb_top_stage1_stage2.v
+SOURCES_timed := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../tb/tb_stage1_stage2_timed.v
 
 TOP     := tb_stage$(STAGE)
+ifeq ($(STAGE),top12)
+TOP     := tb_top_stage1_stage2
+endif
+ifeq ($(STAGE),timed)
+TOP     := tb_stage1_stage2_timed
+endif
 SOURCES := $(SOURCES_$(STAGE))
 SNAP    := $(TOP)_sim
 
