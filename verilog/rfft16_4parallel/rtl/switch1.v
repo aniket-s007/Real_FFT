@@ -1,11 +1,11 @@
 `timescale 1ns/1ps
 
 // switch1.v -- the "SW1" box (Fig. 5(a)): a 2:1 select on a (re, im) pair.
-// Exact hardware twin of the python model's sw1(activate, local, upper):
-//     return upper if activate else local
+// Exact hardware twin of the python model's sw1(control1, local, upper):
+//     return upper if control1 else local
 //
 // Only one of the two sources is ever live at a time in this pipeline's
-// own schedule (see stage3.v, which drives `activate`): on the cycles
+// own schedule (see stage3.v, which drives `control1`): on the cycles
 // where SW1 is "on", the LOCAL complex-BF pair hasn't been computed yet;
 // on the cycles where it's "off", the UPPER (Eq.(7)) pair isn't relevant.
 // So this models the net ROUTING EFFECT of a 2:1 select between two
@@ -14,23 +14,17 @@
 // once and leave one output permanently unused here. Same caveat as the
 // python model's own sw1() docstring.
 
-// NOTE on WIDTH: here it means "bus width of ONE component of the pair,"
-// not the sample width WIDTH denotes everywhere else in this project. SW1
-// sits downstream of Stage 3's butterflies, so it carries BF outputs, not
-// samples -- at the Stage-3 instantiation that's WIDTH+3 bits (samples are
-// WIDTH, stage1 adds a bit, stage2 another, stage3's BF one more). Passing
-// the sample width here would silently truncate three bits, sign included.
-
 module switch1 #(
     parameter WIDTH = 8
 ) (
-    input  wire                    activate,
-    input  wire signed [WIDTH-1:0] local_re, local_im,
-    input  wire signed [WIDTH-1:0] upper_re, upper_im,
-    output wire signed [WIDTH-1:0] out_re,   out_im
+    input  wire                    control1,
+    input  wire signed [WIDTH-1:0] in_top, 
+    input  wire signed [WIDTH-1:0] in_bottom,
+    output wire signed [WIDTH-1:0] out_top,
+    output wire signed [WIDTH-1:0] out_bottom
 );
 
-    assign out_re = activate ? upper_re : local_re;
-    assign out_im = activate ? upper_im : local_im;
+    assign  out_top = control1 ?  in_bottom : in_top;
+    assign  out_bottom = control1 ?  in_top : in_bottom;
 
 endmodule

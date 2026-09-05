@@ -2,13 +2,8 @@ IR021_1.mat
 Normal_1.mat
 __pycache__/
 *.pyc
-
+PROJECT_LOG.md
+verilog/rfft16_4parallel/code explaination/
 # Vivado xsim build artifacts
-verilog/**/xsim.dir/
-verilog/**/*.jou
-verilog/**/*.log
-verilog/**/*.pb
-verilog/**/*.wdb
-verilog/**/.Xil/
-verilog/**/dfx_runtime.txt
+verilog/**/log/
 *.vvp
