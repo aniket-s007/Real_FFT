@@ -55,20 +55,49 @@
 //
 //   control1 = c2_pos[1]   -- 1 during c2_pos=2,3 (c3=0,1), 0 during c2_pos=0,1 (c3=2,3)
 //
-// BF_A's operand pair and BF_B's operand pair are each selected from
-// {top_sum/top_diff taps} vs {bot_re/bot_im taps} by switch1 instances
-// gated on control1 -- literally the SW1 box, used here for its general
-// 2:1-select role rather than only the "swap two adjacent lanes" case.
-// One further switch1 (feeding the rotator's re_in) has BOTH outputs
-// used productively: its out_top is the rotator's re_in, and its
-// out_bottom is simultaneously stage3's own "p1" output port -- the one
-// place in this file where a single SW1 instance's two outputs both do
-// real work, which is the closest this module gets to a literal
-// crossbar swap in Fig. 5(a)'s original sense.
+// EXACTLY 3 switch1 (SW1) instances, matching Fig. 7's box count for this
+// column -- not 5. Each BF box's ENTIRE operand pair (both the "older"
+// tap and the "newer" tap) is chosen by a SINGLE switch1 instance, using
+// switch1's own WIDTH parameter to carry both operands concatenated on
+// one bus (`{older, newer}`) rather than instantiating one switch1 per
+// operand slot: a 2-lane-wide 2:1 mux gated by one control bit is still
+// one switch, exactly like ganging 2 parallel 1-bit muxes on a shared
+// select line never makes them "two muxes". This is NOT a value change
+// from a 4-single-lane-switch version -- it's the same selects, packed --
+// so it's bit-exact by construction, re-confirmed against the testbench
+// below rather than assumed.
+//
+//   sw_bf_a: control1=1 -> {top_sum_d2, s2_top_sum}      (immediate/TS role)
+//            control1=0 -> {bot_re_d4,  bot_re_d2}        (deferred/BR role)
+//   sw_bf_b: control1=1 -> {top_diff_d2, neg_top_diff_live}
+//            control1=0 -> {bot_im_d4,   bot_im_d2}
+//
+// The 3rd switch1 (feeding the rotator's re_in) has BOTH outputs used
+// productively: its out_top is the rotator's re_in, and its out_bottom
+// is simultaneously stage3's own "p1" output port -- the one place in
+// this file where a single SW1 instance's two outputs both do real
+// work, which is the closest this module gets to a literal crossbar
+// swap in Fig. 5(a)'s original sense.
 //
 // The Eq.(7) sign flip is applied OUTSIDE real_bf, on the LIVE top_diff
 // tap, before it reaches BF_B: real_bf's passthrough mode hands back
 // (in1, in2) unchanged, it does not negate anything.
+//
+// Delay elements: 4 total, all "2-delay" (2-deep) -- top_sum/top_diff
+// each get their own dedicated 2-deep register (needed only for their
+// own live+2-old pairing, not separately counted as part of the "four"
+// below); bot_re and bot_im each get TWO 2-deep registers cascaded in
+// series (d1,d2 then d3,d4), which is what "four 2-delay elements"
+// refers to -- the hardware Fig. 7 draws for the pairs that must be
+// held past the point their own arithmetic role would otherwise be
+// ready. That 4-cycle hold is not a design choice: at the moment either
+// pair's SECOND operand goes live, all four of stage2's row-groups
+// (top_sum, top_diff, bot_re, bot_im) are simultaneously ready, and with
+// only 2 physical BF boxes here, 2 of the 4 must wait -- which turns
+// their "2-old, live" pair into "4-old, 2-old" by the time a box frees
+// up. Checked directly against gen_stage34_schedule.py's own schedule
+// table (taps "live,-2" for the immediate pair, "-2,-4" for the
+// deferred pair) rather than assumed.
 // -------------------------------------------------------------------
 
 module stage3 #(
@@ -182,27 +211,27 @@ module stage3 #(
         endcase
     end
 
-    // ---- route BF_A's and BF_B's operand pairs, via switch1 (SW1) ----
+    // ---- route BF_A's and BF_B's operand PAIRS, one switch1 per box ----
+    // Each switch1 here carries both operands of a pair concatenated on
+    // a 2*IN_WIDTH bus -- one switch, two lanes wide, not two switches.
     wire signed [IN_WIDTH-1:0] neg_top_diff_live = -s2_top_diff;   // Eq.(7), applied outside the box, on the LIVE tap
 
-    wire signed [IN_WIDTH-1:0] bf_b_in1, bf_b_in2;
-    switch1 #(.WIDTH(IN_WIDTH)) sw_bf_b_op1 (
-        .control1(control1), .in_top(bot_im_d4), .in_bottom(top_diff_d2),
-        .out_top(bf_b_in1), .out_bottom()   // unused: the complement pairing has no consumer
-    );
-    switch1 #(.WIDTH(IN_WIDTH)) sw_bf_b_op2 (
-        .control1(control1), .in_top(bot_im_d2), .in_bottom(neg_top_diff_live),
-        .out_top(bf_b_in2), .out_bottom()
+    wire signed [IN_WIDTH-1:0] bf_a_in1, bf_a_in2;
+    switch1 #(.WIDTH(2*IN_WIDTH)) sw_bf_a (
+        .control1(control1),
+        .in_top   ({bot_re_d4,  bot_re_d2}),        // deferred/BR role
+        .in_bottom({top_sum_d2, s2_top_sum}),       // immediate/TS role
+        .out_top  ({bf_a_in1, bf_a_in2}),
+        .out_bottom()                                // unused: the complement pairing has no consumer
     );
 
-    wire signed [IN_WIDTH-1:0] bf_a_in1, bf_a_in2;
-    switch1 #(.WIDTH(IN_WIDTH)) sw_bf_a_op1 (
-        .control1(control1), .in_top(bot_re_d4), .in_bottom(top_sum_d2),
-        .out_top(bf_a_in1), .out_bottom()
-    );
-    switch1 #(.WIDTH(IN_WIDTH)) sw_bf_a_op2 (
-        .control1(control1), .in_top(bot_re_d2), .in_bottom(s2_top_sum),
-        .out_top(bf_a_in2), .out_bottom()
+    wire signed [IN_WIDTH-1:0] bf_b_in1, bf_b_in2;
+    switch1 #(.WIDTH(2*IN_WIDTH)) sw_bf_b (
+        .control1(control1),
+        .in_top   ({bot_im_d4,   bot_im_d2}),       // deferred/BI role
+        .in_bottom({top_diff_d2, neg_top_diff_live}), // immediate/TD role
+        .out_top  ({bf_b_in1, bf_b_in2}),
+        .out_bottom()
     );
 
     // ---- BF_A: always arithmetic. BF_B: mode-switched by control1 ----
