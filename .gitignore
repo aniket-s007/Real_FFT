@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 PROJECT_LOG.md
 verilog/rfft16_4parallel/code explaination/
+F:\Aniket\College\Coding\FFT_project\Real_FFT\PaperFiles\2013-Pipelined Architectures for Real-Valued FFT
 # Vivado xsim build artifacts
 verilog/**/log/
 *.vvp
