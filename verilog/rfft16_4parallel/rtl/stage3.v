@@ -284,20 +284,33 @@ module stage3 #(
         .out_sum(bf_a_sum_c), .out_diff(top_bf_out_diff)
     );
 
-    wire signed [IN_WIDTH:0] top_bf_out_sum, bf_b_diff_c;
+    wire signed [IN_WIDTH:0] bottom_bf_out_sum, bf_b_diff_c;
     real_bf #(.WIDTH(IN_WIDTH)) bf_b (                                  //Bottom Butterfly 
         .pass_thru(control1),           // same net that picked its own operands above
         .in1(s3_bottom_bf_top_in), .in2(s3_bottom_bf_bottom_in),
-        .out_sum(top_bf_out_sum), .out_diff(bf_b_diff_c)
+        .out_sum(bottom_bf_out_sum), .out_diff(bf_b_diff_c)
     );
 
     // ---- the one place a single SW1's two outputs both do real work ----
+    // Matches Fig. 7's own crossing at this switch: BF_B's sum feeds the
+    // TOP input, BF_A's diff feeds the BOTTOM input, and the switch's
+    // BOTTOM output goes to the rotator's re_in while its TOP output goes
+    // straight to s3_p1 -- the mirror of the previous top/bottom
+    // assignment on BOTH sides at once. switch1 is a plain crossbar
+    // (out_top = control1?in_bottom:in_top, out_bottom = control1?in_top
+    // :in_bottom), which is symmetric under swapping in_top<->in_bottom
+    // together with out_top<->out_bottom: new_out_top's value == old
+    // out_bottom's value and vice versa, for every control1. Swapping only
+    // one side (inputs OR outputs, not both) would actually change which
+    // value reaches which downstream port and break the verified
+    // schedule -- this swaps both, so it's a pure relabeling: rot_re_in
+    // and p1_c carry the exact same values as before.
     wire signed [IN_WIDTH:0] rot_re_in, p1_c;
     switch1 #(.WIDTH(IN_WIDTH+1)) sw_rot_re_and_p1 (
-        .control1(control1),
-        .in_top(top_bf_out_diff), .in_bottom(top_bf_out_sum),
-        .out_top(rot_re_in),   // -> rotator.re_in
-        .out_bottom(p1_c)      // -> s3_p1
+        .control1(~control1),
+        .in_top(top_bf_out_diff), .in_bottom(bottom_bf_out_sum),
+        .out_top(p1_c),          // -> s3_p1
+        .out_bottom(rot_re_in)   // -> rotator.re_in
     );
 
     wire signed [IN_WIDTH+1:0] rot_re_c, rot_im_c;
