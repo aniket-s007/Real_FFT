@@ -55,49 +55,69 @@
 //
 //   control1 = c2_pos[1]   -- 1 during c2_pos=2,3 (c3=0,1), 0 during c2_pos=0,1 (c3=2,3)
 //
-// EXACTLY 3 switch1 (SW1) instances, matching Fig. 7's box count for this
-// column -- not 5. Each BF box's ENTIRE operand pair (both the "older"
-// tap and the "newer" tap) is chosen by a SINGLE switch1 instance, using
-// switch1's own WIDTH parameter to carry both operands concatenated on
-// one bus (`{older, newer}`) rather than instantiating one switch1 per
-// operand slot: a 2-lane-wide 2:1 mux gated by one control bit is still
-// one switch, exactly like ganging 2 parallel 1-bit muxes on a shared
-// select line never makes them "two muxes". This is NOT a value change
-// from a 4-single-lane-switch version -- it's the same selects, packed --
-// so it's bit-exact by construction, re-confirmed against the testbench
-// below rather than assumed.
+// EXACTLY 3 switch1 (SW1) instances and 4 delay elements (all 2-deep),
+// matching Fig. 6's ("Shuffling structure of the pipelined RFFT")
+// worked N=16 example and the paper's own resource count for this
+// column -- not the 5-switch/asymmetric-2D-4D version an earlier
+// session built. That version reached the same s3[] values with a
+// wrong topology: it put BOTH of top_sum's and top_diff's own 2-deep
+// delays BEFORE their switch (never needed) and stacked FOUR deep
+// registers directly on bot_re/bot_im with no switch involved in
+// reaching the far tap. Per Fig. 6, the switch sits BETWEEN two
+// 2-deep delays, not downstream of a single deep one:
 //
-//   sw_bf_a: control1=1 -> {top_sum_d2, s2_top_sum}      (immediate/TS role)
-//            control1=0 -> {bot_re_d4,  bot_re_d2}        (deferred/BR role)
-//   sw_bf_b: control1=1 -> {top_diff_d2, neg_top_diff_live}
-//            control1=0 -> {bot_im_d4,   bot_im_d2}
+//   s2_top_sum  ----------------------------> switch_top.in_top (LIVE, no delay)
+//   s2_bot_re -> [2D] -----------------------> switch_top.in_bottom
+//   switch_top.out_top -> [2D] -> BF_A.in1 (the "older" operand)
+//   switch_top.out_bottom ------------------->  BF_A.in2 (the "newer" operand, live)
 //
-// The 3rd switch1 (feeding the rotator's re_in) has BOTH outputs used
-// productively: its out_top is the rotator's re_in, and its out_bottom
-// is simultaneously stage3's own "p1" output port -- the one place in
-// this file where a single SW1 instance's two outputs both do real
-// work, which is the closest this module gets to a literal crossbar
-// swap in Fig. 5(a)'s original sense.
+// and symmetrically s2_top_diff/s2_bot_im -> switch_bottom -> BF_B.
+// (The name "switch_top"/"switch_bottom" here is Fig. 6's own, from the
+// row each occupies -- not related to a signal's "top_sum" name.)
 //
-// The Eq.(7) sign flip is applied OUTSIDE real_bf, on the LIVE top_diff
-// tap, before it reaches BF_B: real_bf's passthrough mode hands back
-// (in1, in2) unchanged, it does not negate anything.
+// Why this reproduces stage3()'s s3[] bit-exactly (checked by hand,
+// then by the testbench): trace switch_top with control1 = c2_pos[1]
+// following the pattern 0,0,1,1 over 4 stage-2 cycles c2=0..3 (s2_top_sum
+// carries s2[c2], s2_bot_re carries s2[8+c2]):
 //
-// Delay elements: 4 total, all "2-delay" (2-deep) -- top_sum/top_diff
-// each get their own dedicated 2-deep register (needed only for their
-// own live+2-old pairing, not separately counted as part of the "four"
-// below); bot_re and bot_im each get TWO 2-deep registers cascaded in
-// series (d1,d2 then d3,d4), which is what "four 2-delay elements"
-// refers to -- the hardware Fig. 7 draws for the pairs that must be
-// held past the point their own arithmetic role would otherwise be
-// ready. That 4-cycle hold is not a design choice: at the moment either
-// pair's SECOND operand goes live, all four of stage2's row-groups
-// (top_sum, top_diff, bot_re, bot_im) are simultaneously ready, and with
-// only 2 physical BF boxes here, 2 of the 4 must wait -- which turns
-// their "2-old, live" pair into "4-old, 2-old" by the time a box frees
-// up. Checked directly against gen_stage34_schedule.py's own schedule
-// table (taps "live,-2" for the immediate pair, "-2,-4" for the
-// deferred pair) rather than assumed.
+//   g | c2_pos | control1 | switch_top.out_top | switch_top.out_bottom
+//   --|--------|----------|---------------------|------------------------
+//   0 |   0    |    0     | s2_top_sum(0)=s2[0] | bot_re_d2(0) (pre-stream, unused)
+//   1 |   1    |    0     | s2_top_sum(1)=s2[1] | bot_re_d2(1) (pre-stream, unused)
+//   2 |   2    |    1     | bot_re_d2(2)=s2[8]  | s2_top_sum(2)=s2[2]
+//   3 |   3    |    1     | bot_re_d2(3)=s2[9]  | s2_top_sum(3)=s2[3]
+//   4 |  0(wrap)|   0     | bot_re_d2(4)=s2[10] | s2_top_sum(4) (post-stream, unused)
+//   5 |  1     |    0     | bot_re_d2(5)=s2[11] | s2_top_sum(5) (post-stream, unused)
+//
+// Delaying out_top by 2 MORE cycles (the 4th delay element) and pairing
+// it with out_bottom LIVE at each g gives BF_A's actual two operands:
+//
+//   g=2: BF_A(out_top_d2(2)=out_top(0)=s2[0], out_bottom(2)=s2[2]) = bf(s2[0],s2[2])   -- c3=0
+//   g=3: BF_A(out_top(1)=s2[1],               out_bottom(3)=s2[3]) = bf(s2[1],s2[3])   -- c3=1
+//   g=4: BF_A(out_top(2)=s2[8],                out_bottom(4)=s2[10])= bf(s2[8],s2[10]) -- c3=2
+//   g=5: BF_A(out_top(3)=s2[9],                out_bottom(5)=s2[11])= bf(s2[9],s2[11]) -- c3=3
+//
+// -- exactly stage3()'s 4 required top/bot_re pairs, in the exact order
+// c2_pos/control1 already expects (see the schedule table below). The
+// symmetric trace for switch_bottom (top_diff/bot_im) lands on
+// bf(s2[4],-s2[6]), bf(s2[5],-s2[7]) [BF_B passthrough, Eq.(7) pair] then
+// bf(s2[12],s2[14]), bf(s2[13],s2[15]) [BF_B arithmetic, BI pair] at the
+// same g=2,3,4,5. The Eq.(7) negate only belongs on switch_bottom's
+// out_bottom, and only while it's carrying top_diff's live tap
+// (control1=1, g=2,3) -- NOT while it's carrying bot_im's delayed tap
+// (control1=0, g=4,5), so it's gated by control1 rather than applied to
+// a fixed wire the way the old 5-switch version did.
+//
+// A note on why the previous session's asymmetric-depth argument doesn't
+// apply here: that argument assumed all four stage-2 signals reach the
+// BF inputs un-shuffled, so all four row-groups become ready at the same
+// two cycles and a 2-box/4-group collision forces a 4-cycle hold on two
+// of them. Fig. 6's shuffle (this file, now) reorders top_sum/bot_re and
+// top_diff/bot_im onto each switch's two OUTPUTS before either BF sees
+// them, which is exactly what removes that collision -- each BF box
+// only ever sees ONE ready pair per cycle, no arbitration between 4
+// candidates needed. That earlier argument was wrong, not just a
+// different valid topology; see PROJECT_LOG.md for the corrected note.
 // -------------------------------------------------------------------
 
 module stage3 #(
@@ -150,26 +170,21 @@ module stage3 #(
     localparam signed [WIDTH-1:0] COS4 = derive_coef(COS4_M);
     localparam signed [WIDTH-1:0] SIN4 = derive_coef(SIN4_M);
 
-    // ---- delay lines: 2D on top_sum/top_diff, 4D on bot_re/bot_im ----
+    // ---- delay elements 1,2: 2D on bot_re/bot_im, BEFORE their switch ----
     // Registered UNCONDITIONALLY every cycle (same convention as
     // stage1.v/stage2.v) -- only the valid/counter logic below decides
-    // which cycles' taps are ever actually used.
-    reg signed [IN_WIDTH-1:0] top_sum_d1,  top_sum_d2;
-    reg signed [IN_WIDTH-1:0] top_diff_d1, top_diff_d2;
-    reg signed [IN_WIDTH-1:0] bot_re_d1,  bot_re_d2,  bot_re_d3,  bot_re_d4;
-    reg signed [IN_WIDTH-1:0] bot_im_d1,  bot_im_d2,  bot_im_d3,  bot_im_d4;
+    // which cycles' taps are ever actually used. top_sum/top_diff need
+    // NO delay here -- they feed their switch LIVE (see header comment).
+    reg signed [IN_WIDTH-1:0] bot_re_d1, bot_re_d2;
+    reg signed [IN_WIDTH-1:0] bot_im_d1, bot_im_d2;
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            top_sum_d1 <= 0;  top_sum_d2 <= 0;
-            top_diff_d1 <= 0; top_diff_d2 <= 0;
-            bot_re_d1 <= 0; bot_re_d2 <= 0; bot_re_d3 <= 0; bot_re_d4 <= 0;
-            bot_im_d1 <= 0; bot_im_d2 <= 0; bot_im_d3 <= 0; bot_im_d4 <= 0;
+            bot_re_d1 <= 0; bot_re_d2 <= 0;
+            bot_im_d1 <= 0; bot_im_d2 <= 0;
         end else begin
-            top_sum_d1  <= s2_top_sum;   top_sum_d2  <= top_sum_d1;
-            top_diff_d1 <= s2_top_diff;  top_diff_d2 <= top_diff_d1;
-            bot_re_d1 <= s2_bot_re; bot_re_d2 <= bot_re_d1; bot_re_d3 <= bot_re_d2; bot_re_d4 <= bot_re_d3;
-            bot_im_d1 <= s2_bot_im; bot_im_d2 <= bot_im_d1; bot_im_d3 <= bot_im_d2; bot_im_d4 <= bot_im_d3;
+            bot_re_d1 <= s2_bot_re; bot_re_d2 <= bot_re_d1;
+            bot_im_d1 <= s2_bot_im; bot_im_d2 <= bot_im_d1;
         end
     end
 
@@ -211,49 +226,76 @@ module stage3 #(
         endcase
     end
 
-    // ---- route BF_A's and BF_B's operand PAIRS, one switch1 per box ----
-    // Each switch1 here carries both operands of a pair concatenated on
-    // a 2*IN_WIDTH bus -- one switch, two lanes wide, not two switches.
-    wire signed [IN_WIDTH-1:0] neg_top_diff_live = -s2_top_diff;   // Eq.(7), applied outside the box, on the LIVE tap
-
-    wire signed [IN_WIDTH-1:0] bf_a_in1, bf_a_in2;
-    switch1 #(.WIDTH(2*IN_WIDTH)) sw_bf_a (
+    // ---- switch_top / switch_bottom: Fig. 6's shuffle, BEFORE the BFs ----
+    // Each switch's 2 inputs are (this lane's LIVE sample, the OTHER
+    // lane's sample already delayed by 2) -- exactly the wiring the user
+    // pointed out from Fig. 6: top_sum/top_diff reach their switch
+    // directly, bot_re/bot_im reach theirs through delay elements 1,2.
+    wire signed [IN_WIDTH-1:0] switch_top_out_top,    switch_top_out_bottom;
+    switch1 #(.WIDTH(IN_WIDTH)) switch_top (
         .control1(control1),
-        .in_top   ({bot_re_d4,  bot_re_d2}),        // deferred/BR role
-        .in_bottom({top_sum_d2, s2_top_sum}),       // immediate/TS role
-        .out_top  ({bf_a_in1, bf_a_in2}),
-        .out_bottom()                                // unused: the complement pairing has no consumer
+        .in_top(s2_top_sum), .in_bottom(bot_re_d2),
+        .out_top(switch_top_out_top), .out_bottom(switch_top_out_bottom)
     );
 
-    wire signed [IN_WIDTH-1:0] bf_b_in1, bf_b_in2;
-    switch1 #(.WIDTH(2*IN_WIDTH)) sw_bf_b (
+    wire signed [IN_WIDTH-1:0] switch_bottom_out_top, switch_bottom_out_bottom;
+    switch1 #(.WIDTH(IN_WIDTH)) switch_bottom (
         .control1(control1),
-        .in_top   ({bot_im_d4,   bot_im_d2}),       // deferred/BI role
-        .in_bottom({top_diff_d2, neg_top_diff_live}), // immediate/TD role
-        .out_top  ({bf_b_in1, bf_b_in2}),
-        .out_bottom()
+        .in_top(s2_top_diff), .in_bottom(bot_im_d2),
+        .out_top(switch_bottom_out_top), .out_bottom(switch_bottom_out_bottom)
     );
+
+    // ---- delay elements 3,4: 2D on each switch's out_top, AFTER the
+    // switch -- reassembles the "older" operand for BF_A/BF_B (see the
+    // g=0..5 trace in the header comment: out_top(g-2) always pairs
+    // correctly with out_bottom(g)). ----
+    reg signed [IN_WIDTH-1:0] switch_top_out_top_d1,    switch_top_out_top_d2;
+    reg signed [IN_WIDTH-1:0] switch_bottom_out_top_d1, switch_bottom_out_top_d2;
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            switch_top_out_top_d1    <= 0; switch_top_out_top_d2    <= 0;
+            switch_bottom_out_top_d1 <= 0; switch_bottom_out_top_d2 <= 0;
+        end else begin
+            switch_top_out_top_d1    <= switch_top_out_top;
+            switch_top_out_top_d2    <= switch_top_out_top_d1;
+            switch_bottom_out_top_d1 <= switch_bottom_out_top;
+            switch_bottom_out_top_d2 <= switch_bottom_out_top_d1;
+        end
+    end
+
+    // BF_A's operands: older (delayed) + newer (live off the switch).
+    wire signed [IN_WIDTH-1:0] s3_top_bf_top_in = switch_top_out_top_d2;
+    wire signed [IN_WIDTH-1:0] s3_top_bf_bottom_in = switch_top_out_bottom;
+
+    // BF_B's operands: same shape, but the Eq.(7) negate belongs only on
+    // the NEWER tap, and only while that tap is top_diff's own live
+    // sample (control1=1) -- not while it's bot_im's delayed sample
+    // (control1=0). Gating on control1 (rather than negating a fixed
+    // wire before the switch, as the previous version did) is what
+    // keeps bot_im's own pair un-negated.
+    wire signed [IN_WIDTH-1:0] s3_bottom_bf_top_in = switch_bottom_out_top_d2;
+    wire signed [IN_WIDTH-1:0] s3_bottom_bf_bottom_in = control1 ? -switch_bottom_out_bottom : switch_bottom_out_bottom;
 
     // ---- BF_A: always arithmetic. BF_B: mode-switched by control1 ----
-    wire signed [IN_WIDTH:0] bf_a_sum_c, bf_a_diff_c;
+    wire signed [IN_WIDTH:0] bf_a_sum_c, top_bf_out_diff;
     real_bf #(.WIDTH(IN_WIDTH)) bf_a (
-        .pass_thru(1'b0),
-        .in1(bf_a_in1), .in2(bf_a_in2),
-        .out_sum(bf_a_sum_c), .out_diff(bf_a_diff_c)
+        .pass_thru(1'b0),                                               //Top Butterfly
+        .in1(s3_top_bf_top_in), .in2(s3_top_bf_bottom_in),
+        .out_sum(bf_a_sum_c), .out_diff(top_bf_out_diff)
     );
 
-    wire signed [IN_WIDTH:0] bf_b_sum_c, bf_b_diff_c;
-    real_bf #(.WIDTH(IN_WIDTH)) bf_b (
+    wire signed [IN_WIDTH:0] top_bf_out_sum, bf_b_diff_c;
+    real_bf #(.WIDTH(IN_WIDTH)) bf_b (                                  //Bottom Butterfly 
         .pass_thru(control1),           // same net that picked its own operands above
-        .in1(bf_b_in1), .in2(bf_b_in2),
-        .out_sum(bf_b_sum_c), .out_diff(bf_b_diff_c)
+        .in1(s3_bottom_bf_top_in), .in2(s3_bottom_bf_bottom_in),
+        .out_sum(top_bf_out_sum), .out_diff(bf_b_diff_c)
     );
 
     // ---- the one place a single SW1's two outputs both do real work ----
     wire signed [IN_WIDTH:0] rot_re_in, p1_c;
     switch1 #(.WIDTH(IN_WIDTH+1)) sw_rot_re_and_p1 (
         .control1(control1),
-        .in_top(bf_a_diff_c), .in_bottom(bf_b_sum_c),
+        .in_top(top_bf_out_diff), .in_bottom(top_bf_out_sum),
         .out_top(rot_re_in),   // -> rotator.re_in
         .out_bottom(p1_c)      // -> s3_p1
     );
