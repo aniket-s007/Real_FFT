@@ -2,10 +2,13 @@
 #   make                  -> build & run tb_stage1 (default)
 #   make STAGE=2          -> build & run tb_stage2
 #   make STAGE=3          -> build & run tb_stage3
+#   make STAGE=4          -> build & run tb_stage4 (chained after stage1-3 inline)
 #   make STAGE=top12      -> build & run tb_top_stage1_stage2 (stage1->stage2
 #                             structural link, top_stage1_stage2.v)
 #   make STAGE=top123     -> build & run tb_top_stage1_stage2_stage3
 #                             (stage1->stage2->stage3 structural link)
+#   make STAGE=top1234    -> build & run tb_top_stage1_stage2_stage3_stage4
+#                             (full stage1->stage2->stage3->stage4 structural link)
 #   make STAGE=timed      -> build & run tb_stage1_stage2_timed (simple
 #                             explicit-timeline stage1->stage2 testbench)
 #   make STAGE=2 wave     -> open tb_stage2 in the xsim GUI
@@ -18,7 +21,7 @@
 # in here. For now, edit the `parameter WIDTH = 16;` line directly in the
 # relevant tb_stageN.v to sweep it.
 
-STAGE     ?= 3
+STAGE     ?= 4
 BUILD_DIR := log
 
 # So xvlog/xelab/xsim resolve even when Vivado's bin dir isn't on the
@@ -29,8 +32,10 @@ export PATH := $(VIVADO_BIN);$(PATH)
 SOURCES_1    := ../rtl/real_bf.v ../rtl/stage1.v ../tb/tb_stage1.v
 SOURCES_2    := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../tb/tb_stage2.v
 SOURCES_3    := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../tb/tb_stage3.v
+SOURCES_4    := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../rtl/stage4.v ../tb/tb_stage4.v
 SOURCES_top12 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/top_stage1_stage2.v ../tb/tb_top_stage1_stage2.v
 SOURCES_top123 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../rtl/top_stage1_stage2.v ../rtl/top_stage1_stage2_stage3.v ../tb/tb_top_stage1_stage2_stage3.v
+SOURCES_top1234 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../rtl/stage4.v ../rtl/top_stage1_stage2.v ../rtl/top_stage1_stage2_stage3.v ../rtl/top_stage1_stage2_stage3_stage4.v ../tb/tb_top_stage1_stage2_stage3_stage4.v
 SOURCES_timed := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../tb/tb_stage1_stage2_timed.v
 
 TOP     := tb_stage$(STAGE)
@@ -39,6 +44,9 @@ TOP     := tb_top_stage1_stage2
 endif
 ifeq ($(STAGE),top123)
 TOP     := tb_top_stage1_stage2_stage3
+endif
+ifeq ($(STAGE),top1234)
+TOP     := tb_top_stage1_stage2_stage3_stage4
 endif
 ifeq ($(STAGE),timed)
 TOP     := tb_stage1_stage2_timed
