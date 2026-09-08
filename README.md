@@ -5,7 +5,7 @@
 ![HDL](https://img.shields.io/badge/HDL-Verilog--2001-blue)
 ![Golden Model](https://img.shields.io/badge/Golden%20Model-Python-yellow)
 ![Simulated with](https://img.shields.io/badge/Simulated%20with-Xilinx%20Vivado-red)
-![Status](https://img.shields.io/badge/Status-Stage%203%20of%204-orange)
+![Status](https://img.shields.io/badge/Status-Stage%204%20of%204-orange)
 
 ---
 
