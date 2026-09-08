@@ -58,7 +58,7 @@ The architecture streams **4 real samples per clock cycle** through 4 pipeline c
 | **1** | BF, BF | Two real butterflies split the incoming 4-sample set into sum/difference pairs across two lanes | 2 × BF | ✅ Built & verified |
 | **2** | BF / Wᵏ | One more BF combines the two *sum* outputs; Eq.(7)'s sign-flip + the shared rotator combine the two *diff* outputs | 1 × BF + 1 × rotator (Wᵏ) | ✅ Built & verified |
 | **3** | SW1+2D, BF, Wᵏ/CSDM | A shuffle network (switches + 2-deep delay lines) reorders live and 2-/4-cycle-old taps before they hit two more BFs and the shared rotator's Wᵏ=W² slot | 2 × BF + 1 × rotator (shared) + 3 × SW1 + 4 × 2-delay elements | ✅ Built & verified |
-| **4** | SW1+D, BF | Final shallower shuffle (1-cycle delays) feeding the closing butterflies that produce X(k) | — | 🚧 Planned |
+| **4** | SW1+D, BF | Final shallower shuffle (1-cycle delays) feeding the closing butterflies that produce X(k) | 2 × BF + 2 x (SW1+2-1D) | ✅ Built & verified |
 
 <p align="center">
   <img src="docs/images/fig7_stage2_3_boundary.png" alt="Fig. 7 detail -- Stage 2/3 boundary shuffle network" width="390">
