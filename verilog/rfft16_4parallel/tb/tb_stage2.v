@@ -24,6 +24,7 @@
 module tb_stage2;
 
     parameter WIDTH = 8;
+    parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
     localparam real SCALE = (1 << (WIDTH - 1));
     localparam IN_WIDTH = WIDTH + 1;   // stage1 output width
 
@@ -44,7 +45,7 @@ module tb_stage2;
     wire s2_valid;
     wire signed [IN_WIDTH:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
-    stage2 #(.WIDTH(WIDTH)) u_stage2 (
+    stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
         .s1_k(s1_top_sum), .s1_k4(s1_bot_sum),
         .s1_k8(s1_top_diff), .s1_k12(s1_bot_diff),
@@ -160,8 +161,8 @@ module tb_stage2;
         // ---- report: input sequence, stage-2 output (DUT), and the
         // expected stage-2 value (computed the same way python's
         // stage2()/bf()/rotator() does), all in one table ----
-        $display("\n idx |   x[idx]             |  stage2 output (DUT) |  stage2 expected  |  abs err  | pass?");
-        $display("-----|-----------------------|----------------------|--------------------|-----------|------");
+        $display("\n idx  |        x[idx]        | stage2 output (DUT)  |   stage2 expected    |       abs err        | pass?");
+        $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
         tol = 6.0 / SCALE;   // rotator's own rounding + propagated input quantization
         pass_count = 0;
@@ -170,12 +171,12 @@ module tb_stage2;
             if (err < 0.0) err = -err;
             if (err > max_err) max_err = err;
             if (err <= tol) pass_count = pass_count + 1;
-            $display(" %3d   | %9.15f   |            %9.15f   |         %9.15f   |  %8.15f   | %s",
+            $display(" %4d | %20.15f | %20.15f | %20.15f | %20.15f | %s",
                       i, x_real[i], fixed_to_real(s2_mem[i]), s2_exp[i], err,
                       (err <= tol) ? "PASS" : "FAIL");
         end
 
-        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d)", max_err, tol, WIDTH);
+        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d, TWIDDLE_WIDTH=%0d)", max_err, tol, WIDTH, TWIDDLE_WIDTH);
         if (pass_count == 16)
             $display("STAGE2: ALL 16 SAMPLES PASS");
         else

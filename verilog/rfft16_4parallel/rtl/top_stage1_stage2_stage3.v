@@ -19,10 +19,11 @@
 // through.
 
 module top_stage1_stage2_stage3 #(
-    parameter WIDTH     = 8,
-    parameter S2_WIDTH  = WIDTH + 2,   // stage2's output width, stage3's input width
-    parameter S3A_WIDTH = S2_WIDTH + 1,
-    parameter S3B_WIDTH = S2_WIDTH + 2
+    parameter WIDTH         = 8,
+    parameter S2_WIDTH      = WIDTH + 2,   // stage2's output width, stage3's input width
+    parameter S3A_WIDTH     = S2_WIDTH + 1,
+    parameter S3B_WIDTH     = S2_WIDTH + 2,
+    parameter TWIDDLE_WIDTH = WIDTH        // twiddle coefficient bit-width, independent of WIDTH
 ) (
     input  wire                        clk,
     input  wire                        rst_n,
@@ -43,7 +44,7 @@ module top_stage1_stage2_stage3 #(
     wire                          s2_valid;
     wire signed [S2_WIDTH-1:0]    s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
-    top_stage1_stage2 #(.WIDTH(WIDTH)) u_top12 (
+    top_stage1_stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_top12 (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
         .x_k(x_k), .x_k_n4(x_k_n4), .x_k_n2(x_k_n2), .x_k_3n4(x_k_3n4),
         .out_valid(s2_valid),
@@ -51,7 +52,7 @@ module top_stage1_stage2_stage3 #(
         .s2_bot_re(s2_bot_re), .s2_bot_im(s2_bot_im)
     );
 
-    stage3 #(.WIDTH(WIDTH)) u_stage3 (
+    stage3 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage3 (
         .clk(clk), .rst_n(rst_n), .in_valid(s2_valid),
         .s2_top_sum(s2_top_sum), .s2_top_diff(s2_top_diff),
         .s2_bot_re(s2_bot_re), .s2_bot_im(s2_bot_im),

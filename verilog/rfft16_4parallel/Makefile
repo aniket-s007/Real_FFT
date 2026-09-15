@@ -18,10 +18,24 @@
 # "-generic_top WIDTH=N" override mis-splits into two separate arguments
 # on this Vivado 2025.1 Windows install regardless of quoting (verified
 # directly, not just in this Makefile) and errors out, so it's not wired
-# in here. For now, edit the `parameter WIDTH = 16;` line directly in the
+# in here. For now, edit the `parameter WIDTH = 8;` line directly in the
 # relevant tb_stageN.v to sweep it.
+#
+# TWIDDLE_WIDTH (the twiddle-coefficient bit-width, independent of WIDTH,
+# added to stage2.v/stage3.v and threaded through every top_*.v/tb_*.v
+# above them) sweeps the same way -- edit that testbench's own
+# `parameter TWIDDLE_WIDTH = WIDTH;` line. Whichever module xvlog/xelab
+# elaborates as its top is the one whose own declared parameter default
+# is what's actually in effect -- for these sim runs that's always the
+# tb_*.v file, not stage2.v/stage3.v/the top_*.v wrappers underneath it
+# (their own defaults are overridden by whatever the testbench passes
+# down via `.WIDTH(WIDTH)`/`.TWIDDLE_WIDTH(TWIDDLE_WIDTH)`). The same
+# idea applies in Vivado for the eventual synthesis-side FF/LUT sweep,
+# except there top_stage1_stage2_stage3_stage4.v itself is the
+# elaboration top, so WIDTH/TWIDDLE_WIDTH need to be set as that
+# project's own top-level Generic/Parameter values instead.
 
-STAGE     ?= 4
+STAGE     ?= top1234
 BUILD_DIR := log
 
 # So xvlog/xelab/xsim resolve even when Vivado's bin dir isn't on the

@@ -11,6 +11,7 @@
 module tb_top_stage1_stage2;
 
     parameter WIDTH = 8;
+    parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
     localparam real SCALE = (1 << (WIDTH - 1));
     localparam IN_WIDTH = WIDTH + 1;
 
@@ -20,7 +21,7 @@ module tb_top_stage1_stage2;
     wire s2_valid;
     wire signed [IN_WIDTH:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
-    top_stage1_stage2 #(.WIDTH(WIDTH)) dut (
+    top_stage1_stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) dut (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
         .x_k(x_k), .x_k_n4(x_k_n4), .x_k_n2(x_k_n2), .x_k_3n4(x_k_3n4),
         .out_valid(s2_valid),
@@ -116,8 +117,8 @@ module tb_top_stage1_stage2;
         @(negedge clk);
         @(negedge clk);
 
-        $display("\n idx |   x[idx]             |  top(s1+s2) output   |  stage2 expected  |  abs err  | pass?");
-        $display("-----|-----------------------|-----------------------|--------------------|-----------|------");
+        $display("\n idx  |        x[idx]        |  top(s1+s2) output   |   stage2 expected    |       abs err        | pass?");
+        $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
         tol = 6.0 / SCALE;
         pass_count = 0;
@@ -126,12 +127,12 @@ module tb_top_stage1_stage2;
             if (err < 0.0) err = -err;
             if (err > max_err) max_err = err;
             if (err <= tol) pass_count = pass_count + 1;
-            $display(" %3d   | %9.15f   |            %9.15f   |         %9.15f   |  %8.15f   | %s",
+            $display(" %4d | %20.15f | %20.15f | %20.15f | %20.15f | %s",
                       i, x_real[i], fixed_to_real(s2_mem[i]), s2_exp[i], err,
                       (err <= tol) ? "PASS" : "FAIL");
         end
 
-        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d)", max_err, tol, WIDTH);
+        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d, TWIDDLE_WIDTH=%0d)", max_err, tol, WIDTH, TWIDDLE_WIDTH);
         if (pass_count == 16)
             $display("TOP_STAGE1_STAGE2: ALL 16 SAMPLES PASS");
         else

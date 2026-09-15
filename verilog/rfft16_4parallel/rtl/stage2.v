@@ -63,8 +63,9 @@
 // module's own comment).
 
 module stage2 #(
-    parameter WIDTH    = 8,
-    parameter IN_WIDTH = WIDTH + 1
+    parameter WIDTH         = 8,
+    parameter IN_WIDTH      = WIDTH + 1,
+    parameter TWIDDLE_WIDTH = WIDTH   // twiddle coefficient bit-width, independent of WIDTH
 ) (
     input  wire                       clk,
     input  wire                       rst_n,
@@ -85,17 +86,20 @@ module stage2 #(
     // ---- twiddle ROM: 4 entries, phi = 0..3 ----
     // MASTER-precision (Q1.(MASTER_WIDTH-1)) constants, derived offline
     // by python/gen_twiddle_master_4parallel.py -- plain signed integers,
-    // no `real`, no $cos/$sin. Valid for WIDTH in [2, MASTER_WIDTH-1]
-    // (checked for WIDTH=4..36, comfortably covering the WIDTH=32
-    // default above); bump MASTER_WIDTH (and re-run the generator) if a
-    // sweep point ever needs WIDTH >= 39.
+    // no `real`, no $cos/$sin. derive_coef() below rescales them down to
+    // TWIDDLE_WIDTH bits (independent of the data-path WIDTH). Valid for
+    // TWIDDLE_WIDTH in [2, MASTER_WIDTH-1] (checked for WIDTH=4..36 back
+    // when TWIDDLE_WIDTH was still tied to WIDTH); bump MASTER_WIDTH (and
+    // re-run the generator) if a sweep point ever needs TWIDDLE_WIDTH >=
+    // 39. TWIDDLE_WIDTH > MASTER_WIDTH is NOT checked here -- it silently
+    // reads X out of the part-select below rather than erroring.
     localparam MASTER_WIDTH = 40;
     localparam signed [MASTER_WIDTH-1:0] COS0_M = 40'sd549755813887, SIN0_M = 40'sd0;
     localparam signed [MASTER_WIDTH-1:0] COS1_M = 40'sd507908144330, SIN1_M = -40'sd210382441821;
     localparam signed [MASTER_WIDTH-1:0] COS2_M = 40'sd388736063997, SIN2_M = -40'sd388736063997;
     localparam signed [MASTER_WIDTH-1:0] COS3_M = 40'sd210382441821, SIN3_M = -40'sd507908144330;
 
-    localparam SHIFT = MASTER_WIDTH - WIDTH;
+    // localparam SHIFT = MASTER_WIDTH - TWIDDLE_WIDTH;
 
     // Rescale a MASTER_WIDTH-bit constant down to the current WIDTH:
     // round (add half an LSB) then arithmetic-shift, then saturate --
@@ -121,21 +125,21 @@ module stage2 #(
     //     end
     // endfunction
 
-    function signed [WIDTH-1:0] derive_coef;
+    function signed [TWIDDLE_WIDTH-1:0] derive_coef;
         input signed [MASTER_WIDTH-1:0] raw;
         begin
-            derive_coef= raw[MASTER_WIDTH-1 -: WIDTH];
+            derive_coef= raw[MASTER_WIDTH-1 -: TWIDDLE_WIDTH];
         end
     endfunction
 
-    localparam signed [WIDTH-1:0] COS0 = derive_coef(COS0_M);
-    localparam signed [WIDTH-1:0] SIN0 = derive_coef(SIN0_M);
-    localparam signed [WIDTH-1:0] COS1 = derive_coef(COS1_M);
-    localparam signed [WIDTH-1:0] SIN1 = derive_coef(SIN1_M);
-    localparam signed [WIDTH-1:0] COS2 = derive_coef(COS2_M);
-    localparam signed [WIDTH-1:0] SIN2 = derive_coef(SIN2_M);
-    localparam signed [WIDTH-1:0] COS3 = derive_coef(COS3_M);
-    localparam signed [WIDTH-1:0] SIN3 = derive_coef(SIN3_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS0 = derive_coef(COS0_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN0 = derive_coef(SIN0_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS1 = derive_coef(COS1_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN1 = derive_coef(SIN1_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS2 = derive_coef(COS2_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN2 = derive_coef(SIN2_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS3 = derive_coef(COS3_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN3 = derive_coef(SIN3_M);
 
     // ---- k = 0..3 cycle counter, self-generated from in_valid pulses ----
     reg [1:0] k;
@@ -146,7 +150,7 @@ module stage2 #(
             k <= (k == 2'd3) ? 2'd0 : k + 2'd1;
     end
 
-    reg signed [WIDTH-1:0] cos_coef, sin_coef;
+    reg signed [TWIDDLE_WIDTH-1:0] cos_coef, sin_coef;
     always @(*) begin
         case (k)
             2'd0: begin cos_coef = COS0; sin_coef = SIN0; end
@@ -167,7 +171,7 @@ module stage2 #(
     // ---- bottom lane: Eq.(7) sign flip, then W^k rotator ----
     wire signed [IN_WIDTH-1:0] eq7_b = -s1_k12;
     wire signed [IN_WIDTH:0] bot_re_c, bot_im_c;
-    rotator #(.IN_WIDTH(IN_WIDTH), .COEF_WIDTH(WIDTH)) wk (
+    rotator #(.IN_WIDTH(IN_WIDTH), .COEF_WIDTH(TWIDDLE_WIDTH)) wk (
         .re_in(s1_k8), .im_in(eq7_b),
         .cos_coef(cos_coef), .sin_coef(sin_coef),
         .re_out(bot_re_c), .im_out(bot_im_c)

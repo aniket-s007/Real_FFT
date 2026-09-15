@@ -23,8 +23,9 @@
 // via out_valid handshaking straight through from stage1 to stage2.
 
 module top_stage1_stage2 #(
-    parameter WIDTH    = 8,
-    parameter IN_WIDTH = WIDTH + 1   // stage1's output width, stage2's input width
+    parameter WIDTH         = 8,
+    parameter IN_WIDTH      = WIDTH + 1,  // stage1's output width, stage2's input width
+    parameter TWIDDLE_WIDTH = WIDTH       // twiddle coefficient bit-width, independent of WIDTH
 ) (
     input  wire                       clk,
     input  wire                       rst_n,
@@ -54,7 +55,7 @@ module top_stage1_stage2 #(
     );
 
     // documented cross-mapping -- do not straight-through these, see header
-    stage2 #(.WIDTH(WIDTH)) u_stage2 (
+    stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
         .s1_k(s1_top_sum),    .s1_k4(s1_bot_sum),
         .s1_k8(s1_top_diff),  .s1_k12(s1_bot_diff),

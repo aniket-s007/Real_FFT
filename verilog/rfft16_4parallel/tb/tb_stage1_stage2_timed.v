@@ -18,6 +18,7 @@
 module tb_stage1_stage2_timed;
 
     parameter WIDTH = 8;
+    parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
     localparam real SCALE     = (1 << (WIDTH - 1));
     localparam       IN_WIDTH = WIDTH + 1;
 
@@ -41,7 +42,7 @@ module tb_stage1_stage2_timed;
     wire s2_valid;
     wire signed [IN_WIDTH:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
-    stage2 #(.WIDTH(WIDTH)) u_stage2 (
+    stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
         .s1_k(s1_top_sum), .s1_k4(s1_bot_sum),
         .s1_k8(s1_top_diff), .s1_k12(s1_bot_diff),

@@ -121,8 +121,9 @@
 // -------------------------------------------------------------------
 
 module stage3 #(
-    parameter WIDTH    = 8,
-    parameter IN_WIDTH = WIDTH + 2   // stage2's own output width (this module's input width)
+    parameter WIDTH         = 8,
+    parameter IN_WIDTH      = WIDTH + 2,  // stage2's own output width (this module's input width)
+    parameter TWIDDLE_WIDTH = WIDTH       // twiddle coefficient bit-width, independent of WIDTH
 ) (
     input  wire                         clk,
     input  wire                         rst_n,
@@ -144,31 +145,34 @@ module stage3 #(
     // Same MASTER-precision + derive_coef() technique as stage2.v (COS0/SIN0
     // and COS2/SIN2 constants copied verbatim -- same angles, same N=16).
     // phi=4 is new here: cos(-2*pi*4/16)=0, sin(-2*pi*4/16)=-1, both exactly
-    // representable at any WIDTH (0, and the most-negative Q1.(WIDTH-1)
-    // value) -- no clamping needed, unlike phi=0's cos=+1.0 case.
+    // representable at any TWIDDLE_WIDTH (0, and the most-negative
+    // Q1.(TWIDDLE_WIDTH-1) value) -- no clamping needed, unlike phi=0's
+    // cos=+1.0 case. Valid for TWIDDLE_WIDTH in [2, MASTER_WIDTH-1];
+    // TWIDDLE_WIDTH > MASTER_WIDTH is NOT checked -- it silently reads X
+    // out of derive_coef()'s part-select rather than erroring.
     localparam MASTER_WIDTH = 40;
     localparam signed [MASTER_WIDTH-1:0] COS0_M = 40'sd549755813887, SIN0_M = 40'sd0;
     localparam signed [MASTER_WIDTH-1:0] COS2_M = 40'sd388736063997, SIN2_M = -40'sd388736063997;
     localparam signed [MASTER_WIDTH-1:0] COS4_M = 40'sd0,            SIN4_M = -40'sd549755813888;
 
-    localparam SHIFT = MASTER_WIDTH - WIDTH;
+    localparam SHIFT = MASTER_WIDTH - TWIDDLE_WIDTH;
 
     // Same truncating bit-slice as stage2.v's derive_coef() -- left as-is
     // project-wide (round+saturate version not adopted there; matching it
     // here keeps every stage's coefficient rounding behavior consistent).
-    function signed [WIDTH-1:0] derive_coef;
+    function signed [TWIDDLE_WIDTH-1:0] derive_coef;
         input signed [MASTER_WIDTH-1:0] raw;
         begin
-            derive_coef = raw[MASTER_WIDTH-1 -: WIDTH];
+            derive_coef = raw[MASTER_WIDTH-1 -: TWIDDLE_WIDTH];
         end
     endfunction
 
-    localparam signed [WIDTH-1:0] COS0 = derive_coef(COS0_M);
-    localparam signed [WIDTH-1:0] SIN0 = derive_coef(SIN0_M);
-    localparam signed [WIDTH-1:0] COS2 = derive_coef(COS2_M);
-    localparam signed [WIDTH-1:0] SIN2 = derive_coef(SIN2_M);
-    localparam signed [WIDTH-1:0] COS4 = derive_coef(COS4_M);
-    localparam signed [WIDTH-1:0] SIN4 = derive_coef(SIN4_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS0 = derive_coef(COS0_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN0 = derive_coef(SIN0_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS2 = derive_coef(COS2_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN2 = derive_coef(SIN2_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] COS4 = derive_coef(COS4_M);
+    localparam signed [TWIDDLE_WIDTH-1:0] SIN4 = derive_coef(SIN4_M);
 
     // ---- delay elements 1,2: 2D on bot_re/bot_im, BEFORE their switch ----
     // Registered UNCONDITIONALLY every cycle (same convention as
@@ -216,7 +220,7 @@ module stage3 #(
 
     wire control1 = c2_pos[1];   // 1 during c2_pos=2,3 (c3=0,1); 0 during c2_pos=0,1 (c3=2,3)
 
-    reg signed [WIDTH-1:0] rot_cos, rot_sin;
+    reg signed [TWIDDLE_WIDTH-1:0] rot_cos, rot_sin;
     always @(*) begin
         case (c2_pos)
             2'd0:    begin rot_cos = COS0; rot_sin = SIN0; end   // c3=2, phi=0
@@ -314,7 +318,7 @@ module stage3 #(
     );
 
     wire signed [IN_WIDTH+1:0] rot_re_c, rot_im_c;
-    rotator #(.IN_WIDTH(IN_WIDTH+1), .COEF_WIDTH(WIDTH)) wk (
+    rotator #(.IN_WIDTH(IN_WIDTH+1), .COEF_WIDTH(TWIDDLE_WIDTH)) wk (
         .re_in(rot_re_in), .im_in(bf_b_diff_c),   // im_in is BF_B.diff unconditionally, both phases
         .cos_coef(rot_cos), .sin_coef(rot_sin),
         .re_out(rot_re_c), .im_out(rot_im_c)
