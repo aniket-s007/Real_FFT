@@ -1,31 +1,11 @@
 `timescale 1ns/1ps
 
-// top_stage1_stage2.v -- structural link of Columns 1+2 ("BF,BF" -> "BF,W^k")
-// of the 4-parallel 16-point RFFT architecture, Salehi/Amirfattahi/Parhi 2013.
-//
-// Fig. 7 draws a direct wire crossing between Column 1 and Column 2 (no
-// switch/delay symbol there -- that only appears later, in front of
-// Column 3), because Stage 2's top BF combines the two SUM outputs of
-// Stage 1 (one from stage1's top lane, one from its bottom lane) and its
-// bottom W^k box combines the two DIFF outputs of Stage 1. This module is
-// exactly that crossing, made into a synthesizable structural instance
-// instead of living only inline inside tb_stage2.v. Cross-mapping (see
-// stage2.v's own header comment, and identical to how tb_stage2.v already
-// wires it -- that testbench passes all 16 samples with this exact
-// connection):
-//     stage1.s1_top_sum  -> stage2.s1_k
-//     stage1.s1_bot_sum  -> stage2.s1_k4
-//     stage1.s1_top_diff -> stage2.s1_k8
-//     stage1.s1_bot_diff -> stage2.s1_k12
-//
-// No extra logic of its own -- purely wiring plus the two stage instances
-// -- so pipeline latency here is the sum of the two stages (2 cycles),
-// via out_valid handshaking straight through from stage1 to stage2.
+// top_stage1_stage2 -- stage1 -> stage2
 
 module top_stage1_stage2 #(
     parameter WIDTH         = 8,
-    parameter IN_WIDTH      = WIDTH + 1,  // stage1's output width, stage2's input width
-    parameter TWIDDLE_WIDTH = WIDTH       // twiddle coefficient bit-width, independent of WIDTH
+    parameter IN_WIDTH      = WIDTH + 1,  // stage1 output width
+    parameter TWIDDLE_WIDTH = WIDTH       // twiddle bit-width
 ) (
     input  wire                       clk,
     input  wire                       rst_n,
@@ -46,6 +26,7 @@ module top_stage1_stage2 #(
     wire                       s1_valid;
     wire signed [IN_WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
 
+    // stage 1
     stage1 #(.WIDTH(WIDTH)) u_stage1 (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
         .x_k(x_k), .x_k_n4(x_k_n4), .x_k_n2(x_k_n2), .x_k_3n4(x_k_3n4),
@@ -54,7 +35,7 @@ module top_stage1_stage2 #(
         .s1_bot_sum(s1_bot_sum), .s1_bot_diff(s1_bot_diff)
     );
 
-    // documented cross-mapping -- do not straight-through these, see header
+    // stage 2 (inputs are cross-connected, not straight-through)
     stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
         .s1_k(s1_top_sum),    .s1_k4(s1_bot_sum),
