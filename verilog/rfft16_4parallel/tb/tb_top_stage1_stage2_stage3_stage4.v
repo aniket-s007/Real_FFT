@@ -20,7 +20,8 @@
 
 module tb_top_stage1_stage2_stage3_stage4;
 
-    parameter WIDTH = 8;
+    parameter WIDTH = 16;
+    parameter TWIDDLE_WIDTH = 14;   // twiddle coefficient bit-width, independent of WIDTH
     localparam real SCALE      = (1 << (WIDTH - 1));
     localparam       S2_WIDTH  = WIDTH + 2;
     localparam       S3A_WIDTH = S2_WIDTH + 1;
@@ -33,7 +34,7 @@ module tb_top_stage1_stage2_stage3_stage4;
     wire s4_valid;
     wire signed [S4_WIDTH-1:0] s4_p0, s4_p1, s4_p2, s4_p3;
 
-    top_stage1_stage2_stage3_stage4 #(.WIDTH(WIDTH)) dut (
+    top_stage1_stage2_stage3_stage4 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) dut (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
         .x_k(x_k), .x_k_n4(x_k_n4), .x_k_n2(x_k_n2), .x_k_3n4(x_k_3n4),
         .out_valid(s4_valid),
@@ -132,8 +133,8 @@ module tb_top_stage1_stage2_stage3_stage4;
         in_valid = 0;
         repeat (14) @(negedge clk);
 
-        $display("\n idx |   x[idx]             |  top(s1..s4) output  |  stage4 expected  |  abs err  | pass?");
-        $display("-----|-----------------------|------------------------|--------------------|-----------|------");
+        $display("\n idx  |        x[idx]        |  top(s1..s4) output  |   stage4 expected    |       abs err        | pass?");
+        $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
         tol = 16.0 / SCALE;
         pass_count = 0;
@@ -142,12 +143,12 @@ module tb_top_stage1_stage2_stage3_stage4;
             if (err < 0.0) err = -err;
             if (err > max_err) max_err = err;
             if (err <= tol) pass_count = pass_count + 1;
-            $display(" %3d   | %9.15f   |            %9.15f   |         %9.15f   |  %8.15f   | %s",
+            $display(" %4d | %20.15f | %20.15f | %20.15f | %20.15f | %s",
                       i, x_real[i], fixed_to_real(s4_mem[i]), s4_exp[i], err,
                       (err <= tol) ? "PASS" : "FAIL");
         end
 
-        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d)", max_err, tol, WIDTH);
+        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d, TWIDDLE_WIDTH=%0d)", max_err, tol, WIDTH, TWIDDLE_WIDTH);
         $display("out_valid pulses captured: %0d/4", cap_idx);
         if (pass_count == 16 && cap_idx == 4)
             $display("TOP_STAGE1_STAGE2_STAGE3_STAGE4: ALL 16 SAMPLES PASS");
