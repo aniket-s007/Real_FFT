@@ -7,4 +7,13 @@ verilog/rfft16_4parallel/code explaination/
 PaperFiles\2013-Pipelined Architectures for Real-Valued FFT
 # Vivado xsim build artifacts
 verilog/**/log/
+verilog\rfft16_4parallel\RTLv1
 *.vvp
+
+# bulk_test generated vectors/output (regenerate with `make gen` / `make sim`)
+verilog/rfft16_4parallel/bulk_test/vec_in.hex
+verilog/rfft16_4parallel/bulk_test/expected.txt
+verilog/rfft16_4parallel/bulk_test/out_A.txt
+verilog/rfft16_4parallel/bulk_test/out_B.txt
+verilog/rfft16_4parallel/bulk_test/run_console.txt
+verilog\rfft16_4parallel\pynq
