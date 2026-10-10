@@ -9,6 +9,8 @@
 #                             (stage1->stage2->stage3 structural link)
 #   make STAGE=top1234    -> build & run tb_top_stage1_stage2_stage3_stage4
 #                             (full stage1->stage2->stage3->stage4 structural link)
+#   make STAGE=top1234pe  -> same pipeline, inputs driven on the POSITIVE clock
+#                             edge (tb_top_stage1_stage2_stage3_stage4_posedge)
 #   make STAGE=timed      -> build & run tb_stage1_stage2_timed (simple
 #                             explicit-timeline stage1->stage2 testbench)
 #   make STAGE=2 wave     -> open tb_stage2 in the xsim GUI
@@ -34,6 +36,13 @@
 # except there top_stage1_stage2_stage3_stage4.v itself is the
 # elaboration top, so WIDTH/TWIDDLE_WIDTH need to be set as that
 # project's own top-level Generic/Parameter values instead.
+#
+# Every stage's output is a constant WIDTH bits (stage1 through stage4's
+# s4_p0..p3 alike) -- every real_bf.v butterfly floor-halves by 1 bit (no
+# rounding, no clamp -- floor-halving never overflows) instead of growing
+# the word (the rotators are unit gain), so a WIDTH sweep changes only the
+# wordlength, not any derived
+# S2_WIDTH/S3A_WIDTH/S3B_WIDTH/S4_WIDTH-style port width.
 
 STAGE     ?= top1234
 BUILD_DIR := log
@@ -50,6 +59,7 @@ SOURCES_4    := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1
 SOURCES_top12 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/top_stage1_stage2.v ../tb/tb_top_stage1_stage2.v
 SOURCES_top123 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../rtl/top_stage1_stage2.v ../rtl/top_stage1_stage2_stage3.v ../tb/tb_top_stage1_stage2_stage3.v
 SOURCES_top1234 := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../rtl/stage4.v ../rtl/top_stage1_stage2.v ../rtl/top_stage1_stage2_stage3.v ../rtl/top_stage1_stage2_stage3_stage4.v ../tb/tb_top_stage1_stage2_stage3_stage4.v
+SOURCES_top1234pe := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/switch1.v ../rtl/stage1.v ../rtl/stage2.v ../rtl/stage3.v ../rtl/stage4.v ../rtl/top_stage1_stage2.v ../rtl/top_stage1_stage2_stage3.v ../rtl/top_stage1_stage2_stage3_stage4.v ../tb/tb_top_stage1_stage2_stage3_stage4_posedge.v
 SOURCES_timed := ../rtl/real_bf.v ../rtl/rotator.v ../rtl/stage1.v ../rtl/stage2.v ../tb/tb_stage1_stage2_timed.v
 
 TOP     := tb_stage$(STAGE)
@@ -61,6 +71,9 @@ TOP     := tb_top_stage1_stage2_stage3
 endif
 ifeq ($(STAGE),top1234)
 TOP     := tb_top_stage1_stage2_stage3_stage4
+endif
+ifeq ($(STAGE),top1234pe)
+TOP     := tb_top_stage1_stage2_stage3_stage4_posedge
 endif
 ifeq ($(STAGE),timed)
 TOP     := tb_stage1_stage2_timed

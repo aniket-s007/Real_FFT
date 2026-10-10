@@ -3,11 +3,7 @@
 // top_stage1_stage2_stage3_stage4 -- full pipeline, stage1 -> stage4
 
 module top_stage1_stage2_stage3_stage4 #(
-    parameter WIDTH         = 8,
-    parameter S2_WIDTH      = WIDTH + 2,   // stage2 output width
-    parameter S3A_WIDTH     = S2_WIDTH + 1,
-    parameter S3B_WIDTH     = S2_WIDTH + 2,
-    parameter S4_WIDTH      = S3B_WIDTH + 1,
+    parameter WIDTH         = 16,
     parameter TWIDDLE_WIDTH = WIDTH        // twiddle bit-width
 ) (
     input  wire                        clk,
@@ -20,15 +16,14 @@ module top_stage1_stage2_stage3_stage4 #(
     input  wire signed [WIDTH-1:0]     x_k_3n4,   // x(k + 3N/4)
 
     output wire                        out_valid,
-    output wire signed [S4_WIDTH-1:0]  s4_p0,
-    output wire signed [S4_WIDTH-1:0]  s4_p1,
-    output wire signed [S4_WIDTH-1:0]  s4_p2,
-    output wire signed [S4_WIDTH-1:0]  s4_p3
+    output wire signed [WIDTH-1:0]     s4_p0,
+    output wire signed [WIDTH-1:0]     s4_p1,
+    output wire signed [WIDTH-1:0]     s4_p2,
+    output wire signed [WIDTH-1:0]     s4_p3
 );
 
-    wire                          s3_valid;
-    wire signed [S3A_WIDTH-1:0]   s3_p0, s3_p1;
-    wire signed [S3B_WIDTH-1:0]   s3_p2, s3_p3;
+    wire                       s3_valid;
+    wire signed [WIDTH-1:0]    s3_p0, s3_p1, s3_p2, s3_p3;
 
     // stage 1 + stage 2 + stage 3
     top_stage1_stage2_stage3 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_top123 (

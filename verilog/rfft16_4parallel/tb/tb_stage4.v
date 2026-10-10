@@ -9,31 +9,23 @@
 // 16 raw s4[] outputs into a testbench memory via the out_valid handshake.
 // stage4's 4 out_valid pulses arrive in the order pos=1,2,3,0 (see
 // stage4.v's header) -- a plain arrival-order counter (cap_idx) maps
-// straight onto that sequence, same idea as tb_stage3.v's cap_idx, just
-// against a different mapping table (this one from
-// python/verify/gen_stage4_schedule.py's S4_BY_POS, not S3_PORTS).
+// straight onto that sequence, unaffected by the width change.
 //
-// s4_exp[] is a hardcoded literal copy of python's own
-// stage4(stage3(stage2(stage1(NOMINAL_X)))), full double precision, taken
-// directly from a fresh run right before this file was written -- not
-// transcribed from memory, not recomputed here.
+// All 4 stages now round+halve their outputs to keep WIDTH constant
+// (stage1/2/4: 1 halving; stage3: 2), so s4_exp[] is expected to match
+// the DUT bit-for-bit; the tolerance below is a safety margin.
 
 module tb_stage4;
 
     parameter WIDTH = 8;
     parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
-    localparam real SCALE      = (1 << (WIDTH - 1));
-    localparam       IN_WIDTH  = WIDTH + 1;       // stage1 output width
-    localparam       S2_WIDTH  = WIDTH + 2;       // stage2 output width (stage3's input width)
-    localparam       S3A_WIDTH = S2_WIDTH + 1;    // stage3's p0/p1 width (stage4's input width)
-    localparam       S3B_WIDTH = S2_WIDTH + 2;    // stage3's p2/p3 width (stage4's input width)
-    localparam       S4_WIDTH  = S3B_WIDTH + 1;   // stage4's own output width
+    localparam real SCALE = (1 << (WIDTH - 1));
 
     reg clk, rst_n, in_valid;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s1_valid;
-    wire signed [IN_WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
+    wire signed [WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
 
     stage1 #(.WIDTH(WIDTH)) u_stage1 (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -44,7 +36,7 @@ module tb_stage4;
     );
 
     wire s2_valid;
-    wire signed [S2_WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
+    wire signed [WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
     stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
@@ -56,8 +48,7 @@ module tb_stage4;
     );
 
     wire s3_valid;
-    wire signed [S3A_WIDTH-1:0] s3_p0, s3_p1;
-    wire signed [S3B_WIDTH-1:0] s3_p2, s3_p3;
+    wire signed [WIDTH-1:0] s3_p0, s3_p1, s3_p2, s3_p3;
 
     stage3 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage3 (
         .clk(clk), .rst_n(rst_n), .in_valid(s2_valid),
@@ -68,7 +59,7 @@ module tb_stage4;
     );
 
     wire s4_valid;
-    wire signed [S4_WIDTH-1:0] s4_p0, s4_p1, s4_p2, s4_p3;
+    wire signed [WIDTH-1:0] s4_p0, s4_p1, s4_p2, s4_p3;
 
     stage4 #(.WIDTH(WIDTH)) u_stage4 (
         .clk(clk), .rst_n(rst_n), .in_valid(s3_valid),
@@ -89,9 +80,9 @@ module tb_stage4;
         x_real[12] = -0.70; x_real[13] =  0.20; x_real[14] = -0.10; x_real[15] =  0.50;
     end
 
-    reg  signed [WIDTH-1:0]   x_mem  [0:15];   // quantized DUT input memory
-    reg  signed [S4_WIDTH-1:0] s4_mem [0:15];  // captured stage-4 output, python s4[] order
-    real                       s4_exp [0:15];  // exact expected s4[], unquantized
+    reg  signed [WIDTH-1:0] x_mem  [0:15];   // quantized DUT input memory
+    reg  signed [WIDTH-1:0] s4_mem [0:15];   // captured stage-4 output, python s4[] order
+    real                    s4_exp [0:15];   // exact expected s4[]
 
     function signed [WIDTH-1:0] to_fixed;
         input real val;
@@ -106,7 +97,7 @@ module tb_stage4;
     endfunction
 
     function real fixed_to_real;
-        input signed [S4_WIDTH-1:0] val;
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -114,20 +105,21 @@ module tb_stage4;
 
     integer i, k;
 
-    // exact expected s4[] -- python's stage4(stage3(stage2(stage1(NOMINAL_X)))),
-    // full double precision, from a fresh run right before this file was written.
+    // exact expected s4[] -- WIDTH-bit fixed-point (every butterfly in
+    // stages 1-4 floor-halves by 1 bit, no rounding, no clamp; see
+    // real_bf.v).
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s4_exp[0]  = 0.55;                    s4_exp[1]  = 0.35000000000000014;
-        s4_exp[2]  = -0.04999999999999993;    s4_exp[3]  = -0.6000000000000001;
-        s4_exp[4]  = 0.08786796564403565;     s4_exp[5]  = 0.5121320343559642;
-        s4_exp[6]  = -0.13284271247461907;    s4_exp[7]  = 0.4328427124746189;
-        s4_exp[8]  = 0.40740000379348296;     s4_exp[9]  = -0.012425256962899645;
-        s4_exp[10] = -1.3585890120945034;     s4_exp[11] = 0.7636142652639202;
-        s4_exp[12] = -0.10437458811854894;    s4_exp[13] = -4.221971008610511;
-        s4_exp[14] = 0.7751750580759775;      s4_exp[15] = -1.848829461346918;
+        s4_exp[0]  = 0.0234375;           s4_exp[1]  = 0.015625;
+        s4_exp[2]  = -0.0078125;          s4_exp[3]  = -0.03125;
+        s4_exp[4]  = -0.0078125;          s4_exp[5]  = 0.03125;
+        s4_exp[6]  = -0.015625;           s4_exp[7]  = 0.0234375;
+        s4_exp[8]  = 0.0234375;           s4_exp[9]  = 0.0;
+        s4_exp[10] = -0.0859375;          s4_exp[11] = 0.046875;
+        s4_exp[12] = -0.0078125;          s4_exp[13] = -0.265625;
+        s4_exp[14] = 0.046875;            s4_exp[15] = -0.125;
     end
 
     // ---- capture DUT (stage4) output into s4_mem, driven by s4_valid ----
@@ -177,9 +169,7 @@ module tb_stage4;
         $display("\n idx  |        x[idx]        | stage4 output (DUT)  |   stage4 expected    |       abs err        | pass?");
         $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
-        // one more add/sub on already-quantized stage3 operands: worst case
-        // is |err_a|+|err_b| ~= 2x stage3's own tolerance.
-        tol = 16.0 / SCALE;
+        tol = 1.0 / SCALE;   // bit-exact by design; safety margin only
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
             err = fixed_to_real(s4_mem[i]) - s4_exp[i];

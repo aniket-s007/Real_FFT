@@ -12,17 +12,13 @@ module tb_top_stage1_stage2_stage3;
 
     parameter WIDTH = 8;
     parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
-    localparam real SCALE      = (1 << (WIDTH - 1));
-    localparam       S2_WIDTH  = WIDTH + 2;
-    localparam       S3A_WIDTH = S2_WIDTH + 1;
-    localparam       S3B_WIDTH = S2_WIDTH + 2;
+    localparam real SCALE = (1 << (WIDTH - 1));
 
     reg clk, rst_n, in_valid;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s3_valid;
-    wire signed [S3A_WIDTH-1:0] s3_p0, s3_p1;
-    wire signed [S3B_WIDTH-1:0] s3_p2, s3_p3;
+    wire signed [WIDTH-1:0] s3_p0, s3_p1, s3_p2, s3_p3;
 
     top_stage1_stage2_stage3 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) dut (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -43,9 +39,9 @@ module tb_top_stage1_stage2_stage3;
         x_real[12] = -0.70; x_real[13] =  0.20; x_real[14] = -0.10; x_real[15] =  0.50;
     end
 
-    reg  signed [WIDTH-1:0]     x_mem  [0:15];
-    reg  signed [S3B_WIDTH-1:0] s3_mem [0:15];
-    real                        s3_exp [0:15];
+    reg  signed [WIDTH-1:0] x_mem  [0:15];
+    reg  signed [WIDTH-1:0] s3_mem [0:15];
+    real                    s3_exp [0:15];
 
     function signed [WIDTH-1:0] to_fixed;
         input real val;
@@ -60,7 +56,7 @@ module tb_top_stage1_stage2_stage3;
     endfunction
 
     function real fixed_to_real;
-        input signed [S3B_WIDTH-1:0] val;
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -68,21 +64,19 @@ module tb_top_stage1_stage2_stage3;
 
     integer i, k;
 
-    // identical to tb_stage3.v's s3_exp[] -- python's own
-    // stage3(stage2(stage1(NOMINAL_X))) output taken verbatim, via
-    // gen_stage34_schedule.py's own printed golden literals.
+    // identical to tb_stage3.v's s3_exp[].
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s3_exp[0]  = 0.45000000000000007;  s3_exp[2]  = -0.04999999999999993;
-        s3_exp[4]  = 0.29999999999999993;  s3_exp[6]  = 0.14999999999999994;
-        s3_exp[1]  = 0.09999999999999992;  s3_exp[3]  = 0.6000000000000001;
-        s3_exp[5]  = -0.21213203435596428; s3_exp[7]  = -0.282842712474619;
-        s3_exp[8]  = 0.19748737341529166;  s3_exp[12] = -2.16317279836453;
-        s3_exp[10] = -0.29748737341529163; s3_exp[14] = -0.5368272016354703;
-        s3_exp[9]  = 0.2099126303781913;   s3_exp[13] = 2.058798210245981;
-        s3_exp[11] = -1.0611016386792118;  s3_exp[15] = 1.3120022597114478;
+        s3_exp[0]  = 0.046875;            s3_exp[1]  = 0.0078125;
+        s3_exp[2]  = -0.0078125;          s3_exp[3]  = 0.0703125;
+        s3_exp[4]  = 0.03125;             s3_exp[5]  = -0.0390625;
+        s3_exp[6]  = 0.0078125;           s3_exp[7]  = -0.0390625;
+        s3_exp[8]  = 0.0234375;           s3_exp[9]  = 0.0234375;
+        s3_exp[10] = -0.0390625;          s3_exp[11] = -0.1328125;
+        s3_exp[12] = -0.2734375;          s3_exp[13] = 0.2578125;
+        s3_exp[14] = -0.0703125;          s3_exp[15] = 0.171875;
     end
 
     // ---- capture DUT output into s3_mem, same port->index mapping as tb_stage3.v ----
@@ -125,7 +119,7 @@ module tb_top_stage1_stage2_stage3;
         $display("\n idx  |        x[idx]        | top(s1+s2+s3) output |   stage3 expected    |       abs err        | pass?");
         $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
-        tol = 8.0 / SCALE;
+        tol = 1.0 / SCALE;   // bit-exact by design; safety margin only
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
             err = fixed_to_real(s3_mem[i]) - s3_exp[i];

@@ -4,7 +4,7 @@
 
 module stage3 #(
     parameter WIDTH         = 8,
-    parameter IN_WIDTH      = WIDTH + 2,  // stage2 output width
+    parameter IN_WIDTH      = WIDTH,      // stage2 output width (constant WIDTH)
     parameter TWIDDLE_WIDTH = WIDTH       // twiddle bit-width (2..39)
 ) (
     input  wire                         clk,
@@ -17,10 +17,10 @@ module stage3 #(
     input  wire signed [IN_WIDTH-1:0]   s2_bot_im,
 
     output reg                          out_valid,
-    output reg  signed [IN_WIDTH:0]     s3_p0,    // BF_A sum
-    output reg  signed [IN_WIDTH:0]     s3_p1,    // BF_A diff / BF_B sum
-    output reg  signed [IN_WIDTH+1:0]   s3_p2,    // rotator re
-    output reg  signed [IN_WIDTH+1:0]   s3_p3     // rotator im
+    output reg  signed [WIDTH-1:0]      s3_p0,    // BF_A sum
+    output reg  signed [WIDTH-1:0]      s3_p1,    // BF_A diff / BF_B sum
+    output reg  signed [WIDTH-1:0]      s3_p2,    // rotator re
+    output reg  signed [WIDTH-1:0]      s3_p3     // rotator im
 );
 
     // twiddle ROM (40-bit master constants)
@@ -143,7 +143,7 @@ module stage3 #(
     wire signed [IN_WIDTH-1:0] s3_bottom_bf_bottom_in = control1 ? -switch_bottom_out_bottom : switch_bottom_out_bottom;
 
     // top butterfly
-    wire signed [IN_WIDTH:0] bf_a_sum_c, top_bf_out_diff;
+    wire signed [IN_WIDTH-1:0] bf_a_sum_c, top_bf_out_diff;
     real_bf #(.WIDTH(IN_WIDTH)) bf_a (
         .pass_thru(1'b0),
         .in1(s3_top_bf_top_in), .in2(s3_top_bf_bottom_in),
@@ -151,7 +151,7 @@ module stage3 #(
     );
 
     // bottom butterfly
-    wire signed [IN_WIDTH:0] bottom_bf_out_sum, bf_b_diff_c;
+    wire signed [IN_WIDTH-1:0] bottom_bf_out_sum, bf_b_diff_c;
     real_bf #(.WIDTH(IN_WIDTH)) bf_b (
         .pass_thru(control1),           // pass through while control1 = 1
         .in1(s3_bottom_bf_top_in), .in2(s3_bottom_bf_bottom_in),
@@ -159,8 +159,8 @@ module stage3 #(
     );
 
     // switch: butterfly outputs to s3_p1 and the rotator
-    wire signed [IN_WIDTH:0] rot_re_in, p1_c;
-    switch1 #(.WIDTH(IN_WIDTH+1)) sw_rot_re_and_p1 (
+    wire signed [IN_WIDTH-1:0] rot_re_in, p1_c;
+    switch1 #(.WIDTH(IN_WIDTH)) sw_rot_re_and_p1 (
         .control1(~control1),
         .in_top(top_bf_out_diff), .in_bottom(bottom_bf_out_sum),
         .out_top(p1_c),          // -> s3_p1
@@ -168,8 +168,8 @@ module stage3 #(
     );
 
     // twiddle rotator
-    wire signed [IN_WIDTH+1:0] rot_re_c, rot_im_c;
-    rotator #(.IN_WIDTH(IN_WIDTH+1), .COEF_WIDTH(TWIDDLE_WIDTH)) wk (
+    wire signed [IN_WIDTH:0] rot_re_c, rot_im_c;
+    rotator #(.IN_WIDTH(IN_WIDTH), .COEF_WIDTH(TWIDDLE_WIDTH)) wk (
         .re_in(rot_re_in), .im_in(bf_b_diff_c),
         .cos_coef(rot_cos), .sin_coef(rot_sin),
         .re_out(rot_re_c), .im_out(rot_im_c)
@@ -184,8 +184,8 @@ module stage3 #(
             out_valid <= taps_ready;
             s3_p0 <= bf_a_sum_c;
             s3_p1 <= p1_c;
-            s3_p2 <= rot_re_c;
-            s3_p3 <= rot_im_c;
+            s3_p2 <= rot_re_c[WIDTH-1:0];
+            s3_p3 <= rot_im_c[WIDTH-1:0];
         end
     end
 

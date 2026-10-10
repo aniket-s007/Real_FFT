@@ -14,25 +14,22 @@
 // Captures all 16 raw s2[] outputs into a testbench memory (python s2[]
 // order) via the out_valid handshake -- decoupled from the exact
 // cumulative pipeline latency (2 cycles: 1 through stage1, 1 through
-// stage2), and self-checks against s2_exp[], a hardcoded literal copy of
-// python's own stage2(stage1(NOMINAL_X)) output (see
-// python/verify/2013architecture_N16_4parallel.py) -- not recomputed
-// here, so there's no risk of this testbench's own float math (e.g.
-// $cos/$sin) drifting from the golden model by even a sub-ULP amount.
-// The DUT itself still uses the quantized ROM built into stage2.v.
+// stage2). Both stage1 and stage2 now round+halve their outputs by 1 bit
+// to keep WIDTH constant, so s2_exp[] is expected to match the DUT
+// bit-for-bit; the tolerance below is a safety margin, not a real error
+// budget.
 
 module tb_stage2;
 
     parameter WIDTH = 8;
     parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
     localparam real SCALE = (1 << (WIDTH - 1));
-    localparam IN_WIDTH = WIDTH + 1;   // stage1 output width
 
     reg clk, rst_n, in_valid;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s1_valid;
-    wire signed [IN_WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
+    wire signed [WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
 
     stage1 #(.WIDTH(WIDTH)) u_stage1 (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -43,7 +40,7 @@ module tb_stage2;
     );
 
     wire s2_valid;
-    wire signed [IN_WIDTH:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
+    wire signed [WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
     stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
@@ -73,8 +70,8 @@ module tb_stage2;
     end
 
     reg  signed [WIDTH-1:0]   x_mem  [0:15];   // quantized DUT input memory
-    reg  signed [IN_WIDTH:0]  s2_mem [0:15];   // captured stage-2 output, python s2[] order
-    real                      s2_exp [0:15];   // exact expected s2[], unquantized
+    reg  signed [WIDTH-1:0]   s2_mem [0:15];   // captured stage-2 output, python s2[] order
+    real                      s2_exp [0:15];   // exact expected s2[]
 
     function signed [WIDTH-1:0] to_fixed;
         input real val;
@@ -89,7 +86,7 @@ module tb_stage2;
     endfunction
 
     function real fixed_to_real;
-        input signed [IN_WIDTH:0] val;
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -97,28 +94,21 @@ module tb_stage2;
 
     integer i, k;
 
-    // exact expected s2[] -- hardcoded, not recomputed in Verilog. This is
-    // python's own stage2(stage1(NOMINAL_X)) output taken verbatim (Python
-    // repr() precision: the shortest decimal that round-trips to the exact
-    // same IEEE-754 double) from python/verify/2013architecture_N16_4parallel.py,
-    // so this testbench compares the DUT against python's own numbers
-    // instead of an independently re-derived Verilog computation --
-    // $cos/$sin here isn't guaranteed bit-identical to python's
-    // math.cos/sin, so the old inline recomputation could diverge from
-    // the golden model by a sub-ULP amount even before quantization error
-    // is considered.
+    // exact expected s2[] -- WIDTH-bit fixed-point (floor-halve-by-1, no
+    // rounding, at both stage1's and stage2's output register); matches
+    // pynq/host/rfft16_sw.py's bf().
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s2_exp[0]  = 0.20000000000000007;   s2_exp[1]  = 0.35000000000000003;
-        s2_exp[2]  = 0.25;                  s2_exp[3]  = -0.2500000000000001;
-        s2_exp[4]  = 0.29999999999999993;   s2_exp[5]  = 0.04999999999999999;
-        s2_exp[6]  = -0.14999999999999994;  s2_exp[7]  = 0.35;
-        s2_exp[8]  = -0.04999999999999999;  s2_exp[9]  = -0.5510448146666282;
-        s2_exp[10] = 0.24748737341529164;   s2_exp[11] = 0.7609574450448195;
-        s2_exp[12] = -1.35;                 s2_exp[13] = 0.4988482857833845;
-        s2_exp[14] = -0.8131727983645298;   s2_exp[15] = 1.5599499244625963;
+        s2_exp[0]  = 0.046875;            s2_exp[1]  = 0.0859375;
+        s2_exp[2]  = 0.0546875;           s2_exp[3]  = -0.0625;
+        s2_exp[4]  = 0.078125;            s2_exp[5]  = 0.0078125;
+        s2_exp[6]  = -0.0390625;          s2_exp[7]  = 0.0859375;
+        s2_exp[8]  = -0.0078125;          s2_exp[9]  = -0.140625;
+        s2_exp[10] = 0.0625;              s2_exp[11] = 0.1953125;
+        s2_exp[12] = -0.3359375;          s2_exp[13] = 0.125;
+        s2_exp[14] = -0.203125;           s2_exp[15] = 0.390625;
     end
 
     // ---- capture DUT (stage2) output into s2_mem, driven by s2_valid ----
@@ -159,12 +149,11 @@ module tb_stage2;
         @(negedge clk);   // stage2's last output lands and gets captured
 
         // ---- report: input sequence, stage-2 output (DUT), and the
-        // expected stage-2 value (computed the same way python's
-        // stage2()/bf()/rotator() does), all in one table ----
+        // expected stage-2 value, all in one table ----
         $display("\n idx  |        x[idx]        | stage2 output (DUT)  |   stage2 expected    |       abs err        | pass?");
         $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
-        tol = 6.0 / SCALE;   // rotator's own rounding + propagated input quantization
+        tol = 1.0 / SCALE;   // bit-exact by design; safety margin only
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
             err = fixed_to_real(s2_mem[i]) - s2_exp[i];

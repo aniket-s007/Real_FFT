@@ -14,13 +14,12 @@
 //      (s1_mem), indexed in the SAME order as python's s1[] list, using
 //      the DUT's out_valid handshake (so capture timing doesn't have to
 //      hardcode the pipeline's 1-cycle latency).
-//   4) Self-checks each captured value against s1_exp[], a hardcoded
-//      literal copy of python's own stage1(NOMINAL_X) output (see
-//      python/verify/2013architecture_N16_4parallel.py) -- not recomputed
-//      here -- with a tolerance of 1.5 LSB (Stage 1's add/sub is exact
-//      arithmetic -- the only error possible here is up to 0.5 LSB from
-//      quantizing each of the two summed inputs, so true error is bounded
-//      by 1.0 LSB; 1.5 leaves headroom).
+//   4) Self-checks each captured value against s1_exp[]. Stage1's output
+//      is now a constant WIDTH bits (not WIDTH+1) -- the butterfly sum/
+//      diff is floor-halved by 1 bit (no rounding) before being
+//      registered, so the DUT is expected to match s1_exp[] exactly
+//      (bit-for-bit, up to IEEE double's exact power-of-2 division); the
+//      tolerance below is only a safety margin.
 //   5) $displays the input frame and a full s1[] comparison table so you
 //      can also eyeball it against the python output directly.
 //
@@ -37,7 +36,7 @@ module tb_stage1;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire out_valid;
-    wire signed [WIDTH:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
+    wire signed [WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
 
     stage1 #(.WIDTH(WIDTH)) dut (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -60,8 +59,8 @@ module tb_stage1;
     end
 
     reg  signed [WIDTH-1:0] x_mem  [0:15];   // quantized DUT input memory
-    reg  signed [WIDTH:0]   s1_mem [0:15];   // captured DUT output memory, python s1[] order
-    real                    s1_exp [0:15];   // exact expected s1[], unquantized
+    reg  signed [WIDTH-1:0] s1_mem [0:15];   // captured DUT output memory, python s1[] order
+    real                    s1_exp [0:15];   // exact expected s1[]
     real                    xq;
 
     function signed [WIDTH-1:0] to_fixed;
@@ -77,7 +76,7 @@ module tb_stage1;
     endfunction
 
     function real fixed_to_real;
-        input signed [WIDTH:0] val;
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -85,27 +84,21 @@ module tb_stage1;
 
     integer i, k;
 
-    // exact expected s1[] -- hardcoded, not recomputed in Verilog. These
-    // are python's own stage1(NOMINAL_X) output taken verbatim (repr()
-    // precision: the shortest decimal that round-trips to the exact same
-    // IEEE-754 double) from python/verify/2013architecture_N16_4parallel.py,
-    // matching the same single-source-of-truth approach tb_stage2.v uses
-    // for s2_exp[] -- even though plain add/sub is deterministic IEEE-754
-    // and would have matched Verilog's own +/- bit-for-bit anyway, this
-    // avoids keeping two independent (if currently equivalent) copies of
-    // stage1's arithmetic in two languages.
+    // exact expected s1[] -- WIDTH-bit fixed-point, floor-halve-by-1 (no
+    // rounding, no clamp) applied at stage1's output register (see
+    // real_bf.v); matches pynq/host/rfft16_sw.py's bf().
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s1_exp[0]  = 0.25;                  s1_exp[1]  = 0.2;
-        s1_exp[2]  = 0.050000000000000044;  s1_exp[3]  = 0.04999999999999993;
-        s1_exp[4]  = -0.04999999999999993;  s1_exp[5]  = 0.15000000000000002;
-        s1_exp[6]  = 0.19999999999999998;   s1_exp[7]  = -0.30000000000000004;
-        s1_exp[8]  = -0.04999999999999999;  s1_exp[9]  = -0.7;
-        s1_exp[10] = 0.75;                  s1_exp[11] = -1.15;
-        s1_exp[12] = 1.35;                  s1_exp[13] = -0.25;
-        s1_exp[14] = 0.4;                   s1_exp[15] = -1.3;
+        s1_exp[0]  = 0.125;               s1_exp[1]  = 0.100006103515625;
+        s1_exp[2]  = 0.024993896484375;   s1_exp[3]  = 0.024993896484375;
+        s1_exp[4]  = -0.0250244140625;    s1_exp[5]  = 0.07501220703125;
+        s1_exp[6]  = 0.0999755859375;     s1_exp[7]  = -0.149993896484375;
+        s1_exp[8]  = -0.024993896484375;  s1_exp[9]  = -0.350006103515625;
+        s1_exp[10] = 0.375;               s1_exp[11] = -0.57501220703125;
+        s1_exp[12] = 0.67498779296875;    s1_exp[13] = -0.125;
+        s1_exp[14] = 0.199981689453125;   s1_exp[15] = -0.649993896484375;
     end
 
     // ---- capture DUT output into s1_mem, driven by out_valid, not by a
@@ -150,14 +143,14 @@ module tb_stage1;
 
         $display("\ninput frame x[0..15] (paste into python's x list):");
         for (i = 0; i < 16; i = i + 1) begin
-            xq = fixed_to_real({x_mem[i][WIDTH-1], x_mem[i]});
+            xq = fixed_to_real(x_mem[i]);
             $display("  x[%0d] = %8.5f  ->  fixed 0x%h = %8.5f", i, x_real[i], x_mem[i], xq);
         end
 
         $display("\n idx |  s1 (fixed -> real)  |  s1 expected (float)  |  abs err  | pass?");
         $display("-----|-----------------------|------------------------|-----------|------");
         max_err = 0.0;
-        tol = 1.5 / SCALE;
+        tol = 1.0 / SCALE;   // bit-exact by design; safety margin only
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
             err = fixed_to_real(s1_mem[i]) - s1_exp[i];
@@ -169,7 +162,7 @@ module tb_stage1;
                       (err <= tol) ? "PASS" : "FAIL");
         end
 
-        $display("\nmax abs error: %0.6f  (tolerance %0.6f = 1.5 LSB at WIDTH=%0d)",
+        $display("\nmax abs error: %0.6f  (tolerance %0.6f, WIDTH=%0d)",
                   max_err, tol, WIDTH);
         if (pass_count == 16)
             $display("STAGE1: ALL 16 SAMPLES PASS");

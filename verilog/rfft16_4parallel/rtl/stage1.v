@@ -15,14 +15,14 @@ module stage1 #(
     input  wire signed [WIDTH-1:0]  x_k_3n4,   // x(k + 3N/4)
 
     output reg                      out_valid,
-    output reg  signed [WIDTH:0]    s1_top_sum,   // -> s1[k]
-    output reg  signed [WIDTH:0]    s1_top_diff,  // -> s1[k+8]
-    output reg  signed [WIDTH:0]    s1_bot_sum,   // -> s1[k+4]
-    output reg  signed [WIDTH:0]    s1_bot_diff   // -> s1[k+12]
+    output reg  signed [WIDTH-1:0]  s1_top_sum,   // -> s1[k]
+    output reg  signed [WIDTH-1:0]  s1_top_diff,  // -> s1[k+8]
+    output reg  signed [WIDTH-1:0]  s1_bot_sum,   // -> s1[k+4]
+    output reg  signed [WIDTH-1:0]  s1_bot_diff   // -> s1[k+12]
 );
 
-    wire signed [WIDTH:0] top_sum_c, top_diff_c;
-    wire signed [WIDTH:0] bot_sum_c, bot_diff_c;
+    wire signed [WIDTH-1:0] top_sum_c, top_diff_c;
+    wire signed [WIDTH-1:0] bot_sum_c, bot_diff_c;
 
     // top butterfly
     real_bf #(.WIDTH(WIDTH)) bf_top (

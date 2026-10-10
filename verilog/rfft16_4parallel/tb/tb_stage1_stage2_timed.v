@@ -11,16 +11,15 @@
 //   1. stage2's own input pins (read straight off u_stage2's ports via a
 //      hierarchical reference) against stage1's known-correct values.
 //   2. stage2's final output against stage2's known-correct values.
+//
 // Both golden value tables are copied verbatim from tb_stage1.v /
-// tb_stage2.v (which are themselves copied verbatim from the python
-// model) -- nothing is recomputed here.
+// tb_stage2.v -- nothing is recomputed here.
 
 module tb_stage1_stage2_timed;
 
     parameter WIDTH = 8;
     parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
-    localparam real SCALE     = (1 << (WIDTH - 1));
-    localparam       IN_WIDTH = WIDTH + 1;
+    localparam real SCALE = (1 << (WIDTH - 1));
 
     reg clk, rst_n, x_valid;   // drives stage1 only -- NOT the same signal as
                                 // stage2's in_valid port (that's s1_valid,
@@ -28,7 +27,7 @@ module tb_stage1_stage2_timed;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s1_valid;
-    wire signed [IN_WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
+    wire signed [WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
     wire [1:0] dbg_s2_k = u_stage2.k;
 
     stage1 #(.WIDTH(WIDTH)) u_stage1 (
@@ -40,7 +39,7 @@ module tb_stage1_stage2_timed;
     );
 
     wire s2_valid;
-    wire signed [IN_WIDTH:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
+    wire signed [WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
     stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
@@ -75,7 +74,7 @@ module tb_stage1_stage2_timed;
     endfunction
 
     function real fixed_to_real;
-        input signed [IN_WIDTH:0] val;   // wide enough for stage1's (IN_WIDTH-1:0) and stage2's (IN_WIDTH:0) outputs
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -89,23 +88,23 @@ module tb_stage1_stage2_timed;
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s1_exp[0]  = 0.25;                  s1_exp[1]  = 0.2;
-        s1_exp[2]  = 0.050000000000000044;  s1_exp[3]  = 0.04999999999999993;
-        s1_exp[4]  = -0.04999999999999993;  s1_exp[5]  = 0.15000000000000002;
-        s1_exp[6]  = 0.19999999999999998;   s1_exp[7]  = -0.30000000000000004;
-        s1_exp[8]  = -0.04999999999999999;  s1_exp[9]  = -0.7;
-        s1_exp[10] = 0.75;                  s1_exp[11] = -1.15;
-        s1_exp[12] = 1.35;                  s1_exp[13] = -0.25;
-        s1_exp[14] = 0.4;                   s1_exp[15] = -1.3;
+        s1_exp[0]  = 0.125;               s1_exp[1]  = 0.1015625;
+        s1_exp[2]  = 0.0234375;           s1_exp[3]  = 0.0234375;
+        s1_exp[4]  = -0.03125;            s1_exp[5]  = 0.078125;
+        s1_exp[6]  = 0.09375;             s1_exp[7]  = -0.1484375;
+        s1_exp[8]  = -0.0234375;          s1_exp[9]  = -0.3515625;
+        s1_exp[10] = 0.375;               s1_exp[11] = -0.578125;
+        s1_exp[12] = 0.671875;            s1_exp[13] = -0.125;
+        s1_exp[14] = 0.1953125;           s1_exp[15] = -0.6484375;
 
-        s2_exp[0]  = 0.20000000000000007;   s2_exp[1]  = 0.35000000000000003;
-        s2_exp[2]  = 0.25;                  s2_exp[3]  = -0.2500000000000001;
-        s2_exp[4]  = 0.29999999999999993;   s2_exp[5]  = 0.04999999999999999;
-        s2_exp[6]  = -0.14999999999999994;  s2_exp[7]  = 0.35;
-        s2_exp[8]  = -0.04999999999999999;  s2_exp[9]  = -0.5510448146666282;
-        s2_exp[10] = 0.24748737341529164;   s2_exp[11] = 0.7609574450448195;
-        s2_exp[12] = -1.35;                 s2_exp[13] = 0.4988482857833845;
-        s2_exp[14] = -0.8131727983645298;   s2_exp[15] = 1.5599499244625963;
+        s2_exp[0]  = 0.046875;            s2_exp[1]  = 0.0859375;
+        s2_exp[2]  = 0.0546875;           s2_exp[3]  = -0.0625;
+        s2_exp[4]  = 0.078125;            s2_exp[5]  = 0.0078125;
+        s2_exp[6]  = -0.0390625;          s2_exp[7]  = 0.0859375;
+        s2_exp[8]  = -0.0078125;          s2_exp[9]  = -0.140625;
+        s2_exp[10] = 0.0625;              s2_exp[11] = 0.1953125;
+        s2_exp[12] = -0.3359375;          s2_exp[13] = 0.125;
+        s2_exp[14] = -0.203125;           s2_exp[15] = 0.390625;
     end
 
     // ---- one shared compare-and-report helper: prints only on FAIL ----
@@ -126,7 +125,7 @@ module tb_stage1_stage2_timed;
     //      live, every time s1_valid pulses ----
     real    s1_tol;
     integer s1_idx, s1_pass;
-    initial begin s1_idx = 0; s1_pass = 0; s1_tol = 1.5 / SCALE; end
+    initial begin s1_idx = 0; s1_pass = 0; s1_tol = 1.0 / SCALE; end   // bit-exact by design
 
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -144,7 +143,7 @@ module tb_stage1_stage2_timed;
     //      live, every time s2_valid pulses ----
     real    s2_tol;
     integer s2_idx, s2_pass;
-    initial begin s2_idx = 0; s2_pass = 0; s2_tol = 6.0 / SCALE; end
+    initial begin s2_idx = 0; s2_pass = 0; s2_tol = 1.0 / SCALE; end   // bit-exact by design
 
     always @(posedge clk) begin
         if (!rst_n) begin

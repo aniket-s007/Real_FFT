@@ -4,23 +4,22 @@
 
 module stage2 #(
     parameter WIDTH         = 8,
-    parameter IN_WIDTH      = WIDTH + 1,
     parameter TWIDDLE_WIDTH = WIDTH   // twiddle bit-width (2..39)
 ) (
     input  wire                       clk,
     input  wire                       rst_n,
     input  wire                       in_valid,
 
-    input  wire signed [IN_WIDTH-1:0] s1_k,     // s1[k]    (stage1.s1_top_sum)
-    input  wire signed [IN_WIDTH-1:0] s1_k4,    // s1[k+4]  (stage1.s1_bot_sum)
-    input  wire signed [IN_WIDTH-1:0] s1_k8,    // s1[k+8]  (stage1.s1_top_diff)
-    input  wire signed [IN_WIDTH-1:0] s1_k12,   // s1[k+12] (stage1.s1_bot_diff)
+    input  wire signed [WIDTH-1:0]    s1_k,     // s1[k]    (stage1.s1_top_sum)
+    input  wire signed [WIDTH-1:0]    s1_k4,    // s1[k+4]  (stage1.s1_bot_sum)
+    input  wire signed [WIDTH-1:0]    s1_k8,    // s1[k+8]  (stage1.s1_top_diff)
+    input  wire signed [WIDTH-1:0]    s1_k12,   // s1[k+12] (stage1.s1_bot_diff)
 
     output reg                        out_valid,
-    output reg  signed [IN_WIDTH:0]   s2_top_sum,   // -> s2[k]
-    output reg  signed [IN_WIDTH:0]   s2_top_diff,  // -> s2[k+4]
-    output reg  signed [IN_WIDTH:0]   s2_bot_re,    // -> s2[k+8]
-    output reg  signed [IN_WIDTH:0]   s2_bot_im     // -> s2[k+12]
+    output reg  signed [WIDTH-1:0]    s2_top_sum,   // -> s2[k]
+    output reg  signed [WIDTH-1:0]    s2_top_diff,  // -> s2[k+4]
+    output reg  signed [WIDTH-1:0]    s2_bot_re,    // -> s2[k+8]
+    output reg  signed [WIDTH-1:0]    s2_bot_im     // -> s2[k+12]
 );
 
     // twiddle ROM (40-bit master constants)
@@ -77,21 +76,29 @@ module stage2 #(
     end
 
     // top butterfly
-    wire signed [IN_WIDTH:0] top_sum_c, top_diff_c;
-    real_bf #(.WIDTH(IN_WIDTH)) bf_top (
+    wire signed [WIDTH-1:0] top_sum_c, top_diff_c;
+    real_bf #(.WIDTH(WIDTH)) bf_top (
         .pass_thru(1'b0),
         .in1(s1_k), .in2(s1_k4),
         .out_sum(top_sum_c), .out_diff(top_diff_c)
     );
 
     // bottom lane: Eq.(7) negate, then twiddle rotator
-    wire signed [IN_WIDTH-1:0] eq7_b = -s1_k12;
-    wire signed [IN_WIDTH:0] bot_re_c, bot_im_c;
-    rotator #(.IN_WIDTH(IN_WIDTH), .COEF_WIDTH(TWIDDLE_WIDTH)) wk (
+    wire signed [WIDTH-1:0] eq7_b = -s1_k12;
+    wire signed [WIDTH:0] bot_re_c, bot_im_c;
+    rotator #(.IN_WIDTH(WIDTH), .COEF_WIDTH(TWIDDLE_WIDTH)) wk (
         .re_in(s1_k8), .im_in(eq7_b),
         .cos_coef(cos_coef), .sin_coef(sin_coef),
         .re_out(bot_re_c), .im_out(bot_im_c)
     );
+
+    // round, halve by 1 bit (rotator lane)
+    function signed [WIDTH-1:0] halve1;
+        input signed [WIDTH:0] raw;
+        begin
+            halve1 = (raw + 1) >>> 1;
+        end
+    endfunction
 
     // output register
     always @(posedge clk) begin
@@ -105,8 +112,8 @@ module stage2 #(
             out_valid   <= in_valid;
             s2_top_sum  <= top_sum_c;
             s2_top_diff <= top_diff_c;
-            s2_bot_re   <= bot_re_c;
-            s2_bot_im   <= bot_im_c;
+            s2_bot_re   <= halve1(bot_re_c);
+            s2_bot_im   <= halve1(bot_im_c);
         end
     end
 

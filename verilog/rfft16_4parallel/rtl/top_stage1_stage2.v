@@ -4,7 +4,6 @@
 
 module top_stage1_stage2 #(
     parameter WIDTH         = 8,
-    parameter IN_WIDTH      = WIDTH + 1,  // stage1 output width
     parameter TWIDDLE_WIDTH = WIDTH       // twiddle bit-width
 ) (
     input  wire                       clk,
@@ -17,14 +16,14 @@ module top_stage1_stage2 #(
     input  wire signed [WIDTH-1:0]    x_k_3n4,   // x(k + 3N/4)
 
     output wire                       out_valid,
-    output wire signed [IN_WIDTH:0]   s2_top_sum,   // -> s2[k]
-    output wire signed [IN_WIDTH:0]   s2_top_diff,  // -> s2[k+4]
-    output wire signed [IN_WIDTH:0]   s2_bot_re,    // -> s2[k+8]
-    output wire signed [IN_WIDTH:0]   s2_bot_im     // -> s2[k+12]
+    output wire signed [WIDTH-1:0]    s2_top_sum,   // -> s2[k]
+    output wire signed [WIDTH-1:0]    s2_top_diff,  // -> s2[k+4]
+    output wire signed [WIDTH-1:0]    s2_bot_re,    // -> s2[k+8]
+    output wire signed [WIDTH-1:0]    s2_bot_im     // -> s2[k+12]
 );
 
     wire                       s1_valid;
-    wire signed [IN_WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
+    wire signed [WIDTH-1:0]    s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
 
     // stage 1
     stage1 #(.WIDTH(WIDTH)) u_stage1 (

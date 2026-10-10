@@ -4,35 +4,35 @@
 // drives ONLY x_k/x_k_n4/x_k_n2/x_k_3n4 into top_stage1_stage2_stage3_
 // stage4 (stage1 -> stage2 -> stage3 -> stage4, wired structurally, no
 // internal signal poked from here) and checks the resulting s4[] output
-// directly against python's golden reference
-// stage4(stage3(stage2(stage1(NOMINAL_X)))) -- not against tb_stage4.v's
-// own DUT output, so this is an independent end-to-end check of the whole
-// architecture, not just a "does the wrapper match the inline version"
-// regression the way tb_top_stage1_stage2_stage3.v was.
+// against the TRUE, unscaled FFT values -- not against the constant-WIDTH
+// architecture's own (deliberately 1/16-attenuated) golden values.
+//
+// The constant-WIDTH pipeline halves once per butterfly column (real_bf.v
+// rounds, halves and clamps; 4 columns) to keep WIDTH constant instead of
+// growing, so its raw output is exactly 1/16 of the true FFT answer. This
+// testbench multiplies the DUT's output by 16 before comparing, so the
+// numbers here are directly comparable to the unscaled design's error
+// figures (same true-value reference, same scale) -- see PROJECT_LOG.md's
+// 2026-09-22 and 2026-09-25 entries for why a raw, unscaled comparison
+// between designs is misleading.
 //
 // Same fixed 16-sample real test frame as every other testbench in this
-// project. s4_exp[] is the same literal copy of the golden values used in
-// tb_stage4.v (both taken from the same fresh python run -- see that
-// file's header for provenance), and the capture/tolerance logic is
-// identical to tb_stage4.v's own, since it's checking the exact same
-// signals, just reached through the structural top module instead of an
-// inline stage1/2/3/4 instantiation.
+// project. s4_exp[] is python's own unquantized
+// stage4(stage3(stage2(stage1(NOMINAL_X)))), taken verbatim -- the exact
+// same table this file held before the constant-WIDTH change.
 
 module tb_top_stage1_stage2_stage3_stage4;
 
     parameter WIDTH = 16;
     parameter TWIDDLE_WIDTH = 14;   // twiddle coefficient bit-width, independent of WIDTH
-    localparam real SCALE      = (1 << (WIDTH - 1));
-    localparam       S2_WIDTH  = WIDTH + 2;
-    localparam       S3A_WIDTH = S2_WIDTH + 1;
-    localparam       S3B_WIDTH = S2_WIDTH + 2;
-    localparam       S4_WIDTH  = S3B_WIDTH + 1;
+    localparam real SCALE = (1 << (WIDTH - 1));
+    localparam real DEATTENUATE = 16.0;   // undoes the pipeline's deliberate 1/16 gain
 
     reg clk, rst_n, in_valid;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s4_valid;
-    wire signed [S4_WIDTH-1:0] s4_p0, s4_p1, s4_p2, s4_p3;
+    wire signed [WIDTH-1:0] s4_p0, s4_p1, s4_p2, s4_p3;
 
     top_stage1_stage2_stage3_stage4 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) dut (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -44,7 +44,7 @@ module tb_top_stage1_stage2_stage3_stage4;
     initial clk = 0;
     always #5 clk = ~clk;
 
-    // ---- same fixed 16-sample frame as tb_stage1/2/3/4.v ----
+    // ---- same fixed 16-sample frame as every other testbench in this project ----
     real x_real [0:15];
     initial begin
         x_real[0]  =  0.10; x_real[1]  = -0.25; x_real[2]  =  0.40; x_real[3]  = -0.55;
@@ -53,9 +53,9 @@ module tb_top_stage1_stage2_stage3_stage4;
         x_real[12] = -0.70; x_real[13] =  0.20; x_real[14] = -0.10; x_real[15] =  0.50;
     end
 
-    reg  signed [WIDTH-1:0]    x_mem  [0:15];
-    reg  signed [S4_WIDTH-1:0] s4_mem [0:15];
-    real                       s4_exp [0:15];
+    reg  signed [WIDTH-1:0] x_mem  [0:15];
+    reg  signed [WIDTH-1:0] s4_mem [0:15];
+    real                    s4_exp [0:15];
 
     function signed [WIDTH-1:0] to_fixed;
         input real val;
@@ -70,7 +70,7 @@ module tb_top_stage1_stage2_stage3_stage4;
     endfunction
 
     function real fixed_to_real;
-        input signed [S4_WIDTH-1:0] val;
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -78,9 +78,8 @@ module tb_top_stage1_stage2_stage3_stage4;
 
     integer i, k;
 
-    // identical to tb_stage4.v's s4_exp[] -- python's own
-    // stage4(stage3(stage2(stage1(NOMINAL_X)))) output, full double
-    // precision, taken from a fresh run right before this file was written.
+    // exact expected s4[] -- python's own unquantized
+    // stage4(stage3(stage2(stage1(NOMINAL_X)))), full double precision.
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
@@ -133,18 +132,21 @@ module tb_top_stage1_stage2_stage3_stage4;
         in_valid = 0;
         repeat (14) @(negedge clk);
 
-        $display("\n idx  |        x[idx]        |  top(s1..s4) output  |   stage4 expected    |       abs err        | pass?");
+        $display("\n idx  |        x[idx]        | top(s1..s4)*32 output|   true FFT expected  |       abs err        | pass?");
         $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
-        tol = 16.0 / SCALE;
+        // x16 amplifies the pipeline's own quantization noise by the same
+        // factor -- observed max ~0.0008 at WIDTH=16, TWIDDLE_WIDTH=14;
+        // 0.0012 leaves a small margin, not a generous one.
+        tol = 0.0012;
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
-            err = fixed_to_real(s4_mem[i]) - s4_exp[i];
+            err = (fixed_to_real(s4_mem[i]) * DEATTENUATE) - s4_exp[i];
             if (err < 0.0) err = -err;
             if (err > max_err) max_err = err;
             if (err <= tol) pass_count = pass_count + 1;
             $display(" %4d | %20.15f | %20.15f | %20.15f | %20.15f | %s",
-                      i, x_real[i], fixed_to_real(s4_mem[i]), s4_exp[i], err,
+                      i, x_real[i], fixed_to_real(s4_mem[i]) * DEATTENUATE, s4_exp[i], err,
                       (err <= tol) ? "PASS" : "FAIL");
         end
 

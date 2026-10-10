@@ -13,13 +13,12 @@ module tb_top_stage1_stage2;
     parameter WIDTH = 8;
     parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
     localparam real SCALE = (1 << (WIDTH - 1));
-    localparam IN_WIDTH = WIDTH + 1;
 
     reg clk, rst_n, in_valid;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s2_valid;
-    wire signed [IN_WIDTH:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
+    wire signed [WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
     top_stage1_stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) dut (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -41,9 +40,9 @@ module tb_top_stage1_stage2;
         x_real[12] = -0.70; x_real[13] =  0.20; x_real[14] = -0.10; x_real[15] =  0.50;
     end
 
-    reg  signed [WIDTH-1:0]   x_mem  [0:15];
-    reg  signed [IN_WIDTH:0]  s2_mem [0:15];
-    real                      s2_exp [0:15];
+    reg  signed [WIDTH-1:0] x_mem  [0:15];
+    reg  signed [WIDTH-1:0] s2_mem [0:15];
+    real                    s2_exp [0:15];
 
     function signed [WIDTH-1:0] to_fixed;
         input real val;
@@ -58,7 +57,7 @@ module tb_top_stage1_stage2;
     endfunction
 
     function real fixed_to_real;
-        input signed [IN_WIDTH:0] val;
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -66,20 +65,19 @@ module tb_top_stage1_stage2;
 
     integer i, k;
 
-    // identical to tb_stage2.v's s2_exp[] -- python's own
-    // stage2(stage1(NOMINAL_X)) output taken verbatim.
+    // identical to tb_stage2.v's s2_exp[].
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s2_exp[0]  = 0.20000000000000007;   s2_exp[1]  = 0.35000000000000003;
-        s2_exp[2]  = 0.25;                  s2_exp[3]  = -0.2500000000000001;
-        s2_exp[4]  = 0.29999999999999993;   s2_exp[5]  = 0.04999999999999999;
-        s2_exp[6]  = -0.14999999999999994;  s2_exp[7]  = 0.35;
-        s2_exp[8]  = -0.04999999999999999;  s2_exp[9]  = -0.5510448146666282;
-        s2_exp[10] = 0.24748737341529164;   s2_exp[11] = 0.7609574450448195;
-        s2_exp[12] = -1.35;                 s2_exp[13] = 0.4988482857833845;
-        s2_exp[14] = -0.8131727983645298;   s2_exp[15] = 1.5599499244625963;
+        s2_exp[0]  = 0.046875;            s2_exp[1]  = 0.0859375;
+        s2_exp[2]  = 0.0546875;           s2_exp[3]  = -0.0625;
+        s2_exp[4]  = 0.078125;            s2_exp[5]  = 0.0078125;
+        s2_exp[6]  = -0.0390625;          s2_exp[7]  = 0.0859375;
+        s2_exp[8]  = -0.0078125;          s2_exp[9]  = -0.140625;
+        s2_exp[10] = 0.0625;              s2_exp[11] = 0.1953125;
+        s2_exp[12] = -0.3359375;          s2_exp[13] = 0.125;
+        s2_exp[14] = -0.203125;           s2_exp[15] = 0.390625;
     end
 
     integer cap_idx;
@@ -120,7 +118,7 @@ module tb_top_stage1_stage2;
         $display("\n idx  |        x[idx]        |  top(s1+s2) output   |   stage2 expected    |       abs err        | pass?");
         $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
-        tol = 6.0 / SCALE;
+        tol = 1.0 / SCALE;   // bit-exact by design; safety margin only
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
             err = fixed_to_real(s2_mem[i]) - s2_exp[i];

@@ -8,30 +8,26 @@
 // all three testbenches are directly comparable. Wires stage1->stage2
 // using the same documented cross-mapping tb_stage2.v uses, then
 // stage2's 4 output ports straight into stage3 (no crossing there --
-// stage3.v takes them by name).
+// stage3.v takes them by name). All 4 stages now round+halve their
+// outputs to keep WIDTH constant, so s3_exp[] is expected to match the
+// DUT bit-for-bit; the tolerance below is a safety margin.
 //
 // Captures all 16 raw s3[] outputs into a testbench memory (python s3[]
 // order) via the out_valid handshake, using the same port->index mapping
-// verified by python/verify/gen_stage34_schedule.py (S3_PORTS). Checks
-// against s3_exp[], a hardcoded literal copy of that script's own
-// printed golden values (python's stage3(stage2(stage1(NOMINAL_X))),
-// re-run fresh right before writing this file -- not re-derived here).
+// this file has always used (unaffected by the width change -- only the
+// expected VALUES changed).
 
 module tb_stage3;
 
     parameter WIDTH = 8;
     parameter TWIDDLE_WIDTH = WIDTH;   // twiddle coefficient bit-width, independent of WIDTH
-    localparam real SCALE      = (1 << (WIDTH - 1));
-    localparam       IN_WIDTH  = WIDTH + 1;       // stage1 output width
-    localparam       S2_WIDTH  = WIDTH + 2;       // stage2 output width (stage3's input width)
-    localparam       S3A_WIDTH = S2_WIDTH + 1;    // stage3's p0/p1 width
-    localparam       S3B_WIDTH = S2_WIDTH + 2;    // stage3's p2/p3 width (rotator output)
+    localparam real SCALE = (1 << (WIDTH - 1));
 
     reg clk, rst_n, in_valid;
     reg signed [WIDTH-1:0] x_k, x_k_n4, x_k_n2, x_k_3n4;
 
     wire s1_valid;
-    wire signed [IN_WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
+    wire signed [WIDTH-1:0] s1_top_sum, s1_top_diff, s1_bot_sum, s1_bot_diff;
 
     stage1 #(.WIDTH(WIDTH)) u_stage1 (
         .clk(clk), .rst_n(rst_n), .in_valid(in_valid),
@@ -42,7 +38,7 @@ module tb_stage3;
     );
 
     wire s2_valid;
-    wire signed [S2_WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
+    wire signed [WIDTH-1:0] s2_top_sum, s2_top_diff, s2_bot_re, s2_bot_im;
 
     stage2 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage2 (
         .clk(clk), .rst_n(rst_n), .in_valid(s1_valid),
@@ -54,8 +50,7 @@ module tb_stage3;
     );
 
     wire s3_valid;
-    wire signed [S3A_WIDTH-1:0] s3_p0, s3_p1;
-    wire signed [S3B_WIDTH-1:0] s3_p2, s3_p3;
+    wire signed [WIDTH-1:0] s3_p0, s3_p1, s3_p2, s3_p3;
 
     stage3 #(.WIDTH(WIDTH), .TWIDDLE_WIDTH(TWIDDLE_WIDTH)) u_stage3 (
         .clk(clk), .rst_n(rst_n), .in_valid(s2_valid),
@@ -77,9 +72,9 @@ module tb_stage3;
         x_real[12] = -0.70; x_real[13] =  0.20; x_real[14] = -0.10; x_real[15] =  0.50;
     end
 
-    reg  signed [WIDTH-1:0]    x_mem  [0:15];   // quantized DUT input memory
-    reg  signed [S3B_WIDTH-1:0] s3_mem [0:15];  // captured stage-3 output, python s3[] order
-    real                        s3_exp [0:15];  // exact expected s3[], unquantized
+    reg  signed [WIDTH-1:0] x_mem  [0:15];   // quantized DUT input memory
+    reg  signed [WIDTH-1:0] s3_mem [0:15];   // captured stage-3 output, python s3[] order
+    real                    s3_exp [0:15];   // exact expected s3[]
 
     function signed [WIDTH-1:0] to_fixed;
         input real val;
@@ -94,7 +89,7 @@ module tb_stage3;
     endfunction
 
     function real fixed_to_real;
-        input signed [S3B_WIDTH-1:0] val;   // wide enough for both s3_p0/p1 and s3_p2/p3
+        input signed [WIDTH-1:0] val;
         begin
             fixed_to_real = val / SCALE;
         end
@@ -102,31 +97,27 @@ module tb_stage3;
 
     integer i, k;
 
-    // exact expected s3[] -- hardcoded from gen_stage34_schedule.py's own
-    // printed golden literals for the "nominal" test vector, re-run fresh
-    // right before this file was written (not transcribed from memory, not
-    // recomputed here -- see that script for how these were derived and
-    // independently checked bit-exact against python's stage3()).
+    // exact expected s3[] -- WIDTH-bit fixed-point (every real_bf.v in
+    // stage3 floor-halves by 1 bit, no rounding, no clamp; the rotator
+    // that follows is unit gain, so every port carries exactly one
+    // halving -- see real_bf.v and pynq/host/rfft16_sw.py's bf()).
     initial begin
         for (i = 0; i < 16; i = i + 1)
             x_mem[i] = to_fixed(x_real[i]);
 
-        s3_exp[0]  = 0.45000000000000007;  s3_exp[2]  = -0.04999999999999993;
-        s3_exp[4]  = 0.29999999999999993;  s3_exp[6]  = 0.14999999999999994;
-        s3_exp[1]  = 0.09999999999999992;  s3_exp[3]  = 0.6000000000000001;
-        s3_exp[5]  = -0.21213203435596428; s3_exp[7]  = -0.282842712474619;
-        s3_exp[8]  = 0.19748737341529166;  s3_exp[12] = -2.16317279836453;
-        s3_exp[10] = -0.29748737341529163; s3_exp[14] = -0.5368272016354703;
-        s3_exp[9]  = 0.2099126303781913;   s3_exp[13] = 2.058798210245981;
-        s3_exp[11] = -1.0611016386792118;  s3_exp[15] = 1.3120022597114478;
+        s3_exp[0]  = 0.046875;            s3_exp[1]  = 0.0078125;
+        s3_exp[2]  = -0.0078125;          s3_exp[3]  = 0.0703125;
+        s3_exp[4]  = 0.03125;             s3_exp[5]  = -0.0390625;
+        s3_exp[6]  = 0.0078125;           s3_exp[7]  = -0.0390625;
+        s3_exp[8]  = 0.0234375;           s3_exp[9]  = 0.0234375;
+        s3_exp[10] = -0.0390625;          s3_exp[11] = -0.1328125;
+        s3_exp[12] = -0.2734375;          s3_exp[13] = 0.2578125;
+        s3_exp[14] = -0.0703125;          s3_exp[15] = 0.171875;
     end
 
     // ---- capture DUT (stage3) output into s3_mem, driven by s3_valid ----
-    // Port -> s3[] index mapping matches gen_stage34_schedule.py's
-    // S3_PORTS table exactly: stage3's own c3 phase advances 0,1,2,3 on
-    // successive out_valid pulses, so a plain cap_idx counter (not a
-    // hierarchical peek at stage3's internal c2_pos) is enough to know
-    // which phase each pulse belongs to.
+    // Port -> s3[] index mapping is unchanged by the width change (pure
+    // cycle/port routing, not values).
     integer cap_idx;
     initial cap_idx = 0;
     always @(posedge clk) begin
@@ -172,7 +163,7 @@ module tb_stage3;
         $display("\n idx  |        x[idx]        | stage3 output (DUT)  |   stage3 expected    |       abs err        | pass?");
         $display("------|----------------------|----------------------|----------------------|----------------------|------");
         max_err = 0.0;
-        tol = 8.0 / SCALE;    // stage3's own rotator rounding + propagated stage1/stage2 quantization
+        tol = 1.0 / SCALE;   // bit-exact by design; safety margin only
         pass_count = 0;
         for (i = 0; i < 16; i = i + 1) begin
             err = fixed_to_real(s3_mem[i]) - s3_exp[i];
